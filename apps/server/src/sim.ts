@@ -26,6 +26,8 @@ export const RESULTS: Record<SkillName, string> = {
   DevOps: '✓ Done — CI 47% faster, PR ready',
 };
 
+export const resultSummary = (skill: SkillName) => `${RESULTS[skill].replace(/^✓ Done — /, '')}.`;
+
 /** Delay before the first step after a run starts. */
 export const START_DELAY_MS = 900;
 
@@ -56,6 +58,8 @@ export interface NewEvent {
 
 export interface RunPatch {
   status: TaskStatus;
+  /** Closing summary, when done. */
+  result?: string;
   step: number;
   nextAt: number | null;
   progress: number;
@@ -91,7 +95,7 @@ export function catchUp(task: RunState, now: number): Advance | null {
   while (at <= now) {
     if (step >= script.length) {
       events.push({ kind: 'done', text: RESULTS[task.skill], at });
-      return { patch: { status: 'done', step, nextAt: null, progress: 1, awaiting: null, finishedAt: at }, events };
+      return { patch: { status: 'done', step, nextAt: null, progress: 1, awaiting: null, finishedAt: at, result: resultSummary(task.skill) }, events };
     }
     const line = script[step];
     step++;

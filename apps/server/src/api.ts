@@ -10,8 +10,12 @@
 //   POST   /tasks                      assign (assigneeId may be "auto")
 //   PATCH  /tasks/:id                  edit a queued task
 //   POST   /tasks/:id/cancel
-//   POST   /tasks/:id/permission       { allow: boolean }
+//   POST   /tasks/:id/permission       { allow: boolean, answer?: string }
+//   GET    /tasks/:id/files            files the agent saved
+//   GET    /tasks/:id/files/content?path=…
+//   POST   /work                       play Claude agent turns for a while (called by open pages)
 import { timingSafeEqual } from 'node:crypto';
+import type { Agents } from './agent/config.ts';
 import type { Db } from './db.ts';
 import { HttpError } from './errors.ts';
 import { Office } from './office.ts';
@@ -38,6 +42,8 @@ export interface ApiOptions {
   /** When set, every request that changes something must send `Authorization: Bearer <token>`. */
   writeToken?: string;
   now?: () => number;
+  /** Real Claude agents, when configured; otherwise runs are simulated. */
+  agents?: Agents;
 }
 
 export type Api = (req: ApiRequest) => Promise<ApiResponse>;
@@ -67,6 +73,10 @@ export function createApi(opts: ApiOptions): Api {
     if (method === 'GET' && (m = /^\/tasks\/([^/]+)\/events$/.exec(path))) {
       return ok({ events: await office.events(id(m[1]), Number(req.query.get('after') ?? 0) || 0) });
     }
+    if (method === 'GET' && (m = /^\/tasks\/([^/]+)\/files$/.exec(path))) return ok({ files: await office.files(id(m[1])) });
+    if (method === 'GET' && (m = /^\/tasks\/([^/]+)\/files\/content$/.exec(path))) {
+      return ok(await office.fileContent(id(m[1]), req.query.get('path') ?? ''));
+    }
 
     if (method !== 'GET' && opts.writeToken && !tokenMatches(req.authorization, opts.writeToken)) {
       throw new HttpError(401, 'This office needs a token to make changes');
@@ -80,7 +90,14 @@ export function createApi(opts: ApiOptions): Api {
     if (method === 'POST' && path === '/tasks') return ok(await office.addTask(v.newTask(req.body)), 201);
     if (method === 'PATCH' && (m = /^\/tasks\/([^/]+)$/.exec(path))) return ok(await office.updateTask(id(m[1]), v.taskPatch(req.body)));
     if (method === 'POST' && (m = /^\/tasks\/([^/]+)\/cancel$/.exec(path))) return ok(await office.cancelTask(id(m[1])));
-    if (method === 'POST' && (m = /^\/tasks\/([^/]+)\/permission$/.exec(path))) return ok(await office.answerPermission(id(m[1]), v.permission(req.body)));
+    if (method === 'POST' && (m = /^\/tasks\/([^/]+)\/permission$/.exec(path))) {
+      const p = v.permission(req.body);
+      return ok(await office.answerPermission(id(m[1]), p.allow, p.answer));
+    }
+    if (method === 'POST' && path === '/work') {
+      const budget = opts.agents?.enabled ? opts.agents.config.workMs : 0;
+      return ok(await office.work(now() + budget));
+    }
     throw new HttpError(404, 'Not found');
   }
 
@@ -88,7 +105,7 @@ export function createApi(opts: ApiOptions): Api {
     try {
       const db = await opts.db();
       await ensureReady(db, now);
-      return await route(req, new Office(db, opts.desks, now), db);
+      return await route(req, new Office(db, opts.desks, now, opts.agents), db);
     } catch (e) {
       if (e instanceof HttpError) return { status: e.status, body: { error: e.message } };
       console.error(e);

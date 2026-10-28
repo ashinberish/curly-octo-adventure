@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { SKILLS, SKILL_NAMES, activeTask, isOpen, suggestAssignees, toolsFor, type Employee, type LogLine, type SkillName } from '@pixel-office/shared';
+import { SKILLS, SKILL_NAMES, activeTask, isOpen, suggestAssignees, toolsFor, type Employee, type LogLine, type SkillName, type Task, type TaskFile } from '@pixel-office/shared';
 import { officeStore } from '../state/store.ts';
 import { Portrait, StatusPill, TaskItem, useEmployeeStatus, useOffice } from './common.tsx';
 
@@ -172,11 +172,101 @@ function AgentConsole({ taskId }: { taskId: number }) {
         {lines.map(l => <div key={l.id} className={l.kind}>{l.text}</div>)}
         {task?.status === 'running' && <span className="cursor" />}
       </div>
-      {task?.status === 'needs_input' && (
-        <div className="approve">
-          <span>Allow <b>{task.awaiting}</b>?</span>
-          <button className="btn green" type="button" onClick={() => void officeStore.getState().resolvePermission(task.id, true)}>Approve</button>
-          <button className="btn red" type="button" onClick={() => void officeStore.getState().resolvePermission(task.id, false)}>Deny</button>
+      {task?.status === 'needs_input' && <WaitingOnYou task={task} />}
+      {task?.result && (task.status === 'done' || task.status === 'failed') && (
+        <div className={`summary${task.status === 'failed' ? ' failed' : ''}`}><b>{task.status === 'failed' ? 'Stopped' : 'Summary'}</b>{task.result}</div>
+      )}
+      {task?.runner === 'claude' && <TaskFiles task={task} />}
+    </>
+  );
+}
+
+/** A task blocked on you: approve a simulated tool call, or answer a Claude agent's question. */
+function WaitingOnYou({ task }: { task: Task }) {
+  const name = useOffice(s => s.employees.find(e => e.id === task.assigneeId)?.name ?? 'The agent');
+  const [answer, setAnswer] = useState('');
+  const [sending, setSending] = useState(false);
+  const send = async (allow: boolean, text?: string) => {
+    setSending(true);
+    await officeStore.getState().resolvePermission(task.id, allow, text);
+    setSending(false);
+  };
+  if (task.runner !== 'claude') {
+    return (
+      <div className="approve">
+        <span>Allow <b>{task.awaiting}</b>?</span>
+        <button className="btn green" type="button" disabled={sending} onClick={() => void send(true)}>Approve</button>
+        <button className="btn red" type="button" disabled={sending} onClick={() => void send(false)}>Deny</button>
+      </div>
+    );
+  }
+  return (
+    <form className="approve question" onSubmit={e => { e.preventDefault(); if (answer.trim()) void send(true, answer.trim()); }}>
+      <div><b>{name} asks:</b> {task.awaiting}</div>
+      <textarea value={answer} onChange={e => setAnswer(e.target.value)} rows={2} placeholder="Your answer…" aria-label="Your answer" maxLength={4000} />
+      <div className="row">
+        <button className="btn green" type="submit" disabled={sending || !answer.trim()}>Send answer</button>
+        <button className="btn small" type="button" disabled={sending} onClick={() => void send(true)}>Yes</button>
+        <button className="btn small red" type="button" disabled={sending} onClick={() => void send(false)}>No</button>
+      </div>
+    </form>
+  );
+}
+
+const FILES_POLL_MS = 3000;
+
+/** Files the agent saved for this task, with a preview. HTML renders in a sandboxed frame with scripts off. */
+function TaskFiles({ task }: { task: Task }) {
+  const [files, setFiles] = useState<TaskFile[]>([]);
+  const [open, setOpen] = useState<{ path: string; content: string } | null>(null);
+  const live = isOpen(task);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async () => {
+      try {
+        const next = await officeStore.getState().fetchFiles(task.id);
+        if (!cancelled) setFiles(next);
+      } catch { /* reported by the store's polling */ }
+      if (!cancelled && live) timer = setTimeout(() => void load(), FILES_POLL_MS);
+    };
+    void load();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [task.id, live]);
+
+  const show = async (path: string) => {
+    if (open?.path === path) return setOpen(null);
+    try { setOpen({ path, content: await officeStore.getState().fetchFile(task.id, path) }); }
+    catch (e) { officeStore.getState().toast(`⚠ ${e instanceof Error ? e.message : String(e)}`); }
+  };
+  const download = (f: { path: string; content: string }) => {
+    const url = URL.createObjectURL(new Blob([f.content], { type: 'text/plain;charset=utf-8' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: f.path.split('/').pop() ?? 'file.txt' });
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <>
+      <h3>Files</h3>
+      {files.length ? (
+        <ul className="files">
+          {files.map(f => (
+            <li key={f.path}>
+              <button type="button" className={`file${open?.path === f.path ? ' on' : ''}`} onClick={() => void show(f.path)}>
+                <span>{f.path}</span><span className="hint">{f.size < 1024 ? `${f.size} B` : `${(f.size / 1024).toFixed(1)} KB`}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="hint">{live ? 'Nothing saved yet.' : 'No files.'}</p>}
+      {open && (
+        <div className="viewer">
+          <div className="row"><b className="path">{open.path}</b><button type="button" className="btn small" onClick={() => download(open)}>Download</button></div>
+          {/\.html?$/i.test(open.path)
+            ? <iframe title={open.path} sandbox="" srcDoc={open.content} />
+            : <pre>{open.content}</pre>}
         </div>
       )}
     </>

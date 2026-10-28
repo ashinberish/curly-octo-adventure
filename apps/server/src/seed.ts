@@ -1,5 +1,5 @@
 import type { Employee, LogKind, SkillName, TaskStatus } from '@pixel-office/shared';
-import { RESULTS, SCRIPTS } from './sim.ts';
+import { RESULTS, SCRIPTS, resultSummary } from './sim.ts';
 
 export const SEED_EMPLOYEES: Employee[] = [
   { id: 'ada',   name: 'Ada',   role: 'Backend Engineer', skills: ['Code', 'DevOps'],                look: { hair: '#2b1d14', style: 'bun',   skin: '#f1c27d', shirt: '#5b7fd6', pants: '#3b3a4a' }, deskId: 'eng-1' },
@@ -21,16 +21,18 @@ interface SeedTask {
   step: number;
   startedAt: number | null;
   finishedAt: number | null;
+  result: string | null;
   log: Array<{ kind: LogKind; text: string; at: number }>;
 }
 
 export function seedTasks(now: number): SeedTask[] {
   const queued = (assigneeId: string, title: string, skill: SkillName): SeedTask =>
-    ({ assigneeId, title, skill, status: 'queued', progress: 0, step: 0, startedAt: null, finishedAt: null, log: [{ kind: 'sys', text: `Queued: “${title}” [${skill}]`, at: now }] });
+    ({ assigneeId, title, skill, status: 'queued', progress: 0, step: 0, startedAt: null, finishedAt: null, result: null, log: [{ kind: 'sys', text: `Queued: “${title}” [${skill}]`, at: now }] });
   const research = SCRIPTS.Research;
   const done: SeedTask = {
     ...queued('sam', 'Competitor pricing scan', 'Research'),
     status: 'done', progress: 1, step: research.length, startedAt: now - 60_000, finishedAt: now - 30_000,
+    result: resultSummary('Research'),
   };
   done.log = [
     { kind: 'sys', text: 'Queued: “Competitor pricing scan” [Research]', at: now - 60_000 },

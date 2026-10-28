@@ -40,6 +40,30 @@ const MIGRATIONS: string[][] = [
     )`,
     `CREATE INDEX IF NOT EXISTS task_events_task ON task_events (task_id, id)`,
   ],
+  // M3: real Claude agents.
+  [
+    `ALTER TABLE tasks
+      ADD COLUMN IF NOT EXISTS runner text NOT NULL DEFAULT 'sim',
+      ADD COLUMN IF NOT EXISTS agent jsonb,
+      ADD COLUMN IF NOT EXISTS conversation jsonb,
+      ADD COLUMN IF NOT EXISTS container_id text,
+      ADD COLUMN IF NOT EXISTS pending jsonb,
+      ADD COLUMN IF NOT EXISTS lease_until double precision,
+      ADD COLUMN IF NOT EXISTS turns integer NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS cost_usd double precision NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS result text,
+      ADD COLUMN IF NOT EXISTS errors integer NOT NULL DEFAULT 0`,
+    `ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check,
+      ADD CONSTRAINT tasks_status_check CHECK (status IN ('queued', 'running', 'needs_input', 'done', 'failed', 'cancelled'))`,
+    `CREATE INDEX IF NOT EXISTS tasks_claude_running ON tasks (lease_until) WHERE runner = 'claude' AND status = 'running'`,
+    `CREATE TABLE IF NOT EXISTS task_files (
+      task_id integer NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      path text NOT NULL,
+      content text NOT NULL,
+      updated_at double precision NOT NULL,
+      PRIMARY KEY (task_id, path)
+    )`,
+  ],
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
@@ -71,9 +95,9 @@ export async function seedOnce(db: Db, now: number): Promise<boolean> {
   }
   for (const t of seedTasks(now)) {
     const [{ id }] = await db.query<{ id: number }>(
-      `INSERT INTO tasks (assignee_id, title, details, skill, status, progress, step, created_at, started_at, finished_at)
-       VALUES ($1, $2, '', $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-      [t.assigneeId, t.title, t.skill, t.status, t.progress, t.step, now, t.startedAt, t.finishedAt],
+      `INSERT INTO tasks (assignee_id, title, details, skill, status, progress, step, created_at, started_at, finished_at, result)
+       VALUES ($1, $2, '', $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+      [t.assigneeId, t.title, t.skill, t.status, t.progress, t.step, now, t.startedAt, t.finishedAt, t.result],
     );
     for (const l of t.log) await db.query(`INSERT INTO task_events (task_id, kind, text, at) VALUES ($1, $2, $3, $4)`, [id, l.kind, l.text, l.at]);
   }

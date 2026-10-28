@@ -35,7 +35,7 @@ writeFileSync(join(fn, '.vc-config.json'), JSON.stringify({
   handler: 'index.mjs',
   launcherType: 'Nodejs',
   shouldAddHelpers: false,
-  maxDuration: 30,
+  maxDuration: 300, // agent turns; see AgentConfig.workMs
 }, null, 2));
 
 writeFileSync(join(out, 'config.json'), JSON.stringify({

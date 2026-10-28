@@ -84,9 +84,13 @@ the agent is waiting for your approval.
 - Polling instead of WebSockets (serverless functions can't hold sockets open).
 - `scripts/vercel-output.mjs` packages the build with Vercel's Build Output API.
 - Optional `OFFICE_TOKEN`: when set, anything that changes the office needs it.
-- **For M3:** a real agent run takes minutes, longer than a function should run. Options: run
-  each agent turn in its own short invocation and persist the session between them, or add a
-  small always-on worker (the design below) that only runs agents.
+- **Agents (M3):** the Claude API with a hand-written tool loop. A run is a conversation saved
+  in Postgres; open pages call `POST /api/work`, which leases up to three runs and plays turns
+  for two minutes. Server tools (web search/fetch, code execution) run on Anthropic's side;
+  workspace files and ask_human run here. Limits: `AGENT_DAILY_BUDGET_USD`, `AGENT_MAX_TURNS`,
+  3 failed turns in a row, and real agents require `OFFICE_TOKEN`. Trade-off versus the Agent
+  SDK design below: no real filesystem, git or Bash on your code, and work only advances while
+  someone has the office open. An always-on worker would lift both.
 
 ### Original design
 
@@ -245,7 +249,7 @@ Auto‑assign picks employees who have the skill, then the one with the shortest
 | M0 | **Mockup** ✅ | Clickable single‑file prototype of the world, panels and flows, agents simulated (`mockup/`) |
 | M1 | **Game world** ✅ | Phaser + Tiled map with the rooms above, character sheets, movement, collisions, NPC pathfinding, interaction prompts, mobile d‑pad (`apps/web`; agents still simulated) |
 | M2 | **Office state** ✅ | Postgres schema, employees/skills/tasks CRUD, React HUD wired to the API, task board (Vercel function + Neon; simulation runs server-side) |
-| M3 | Real agents | BullMQ worker running the Agent SDK per task, skills written into workspaces, events stored and streamed |
+| M3 | **Real agents** ✅ | Claude API agents on Vercel: a turn loop saved in Postgres, tools by skill (web, code sandbox, workspace files, ask_human), daily budget, refusal fallbacks (instead of the Agent SDK worker; see 4) |
 | M4 | Human in the loop | Permission requests, approve/deny, cancel/retry, failure states, notifications |
 | M5 | Polish | Sounds, idle behaviours, XP/levels, cost meter, onboarding tutorial (walk to the boss's desk) |
 | M6 | Team play | Multi‑user office (presence over WS), hand‑offs between employees, meetings for multi‑agent tasks |

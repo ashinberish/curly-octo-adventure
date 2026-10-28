@@ -1,4 +1,6 @@
 // Entry point of the Vercel function serving /api/*. Bundled by scripts/vercel-output.mjs.
+import { agentsFromEnv } from './agent/config.ts';
+import { claudeCaller } from './agent/claude.ts';
 import { createApi } from './api.ts';
 import { neonDb, type Db } from './db.ts';
 import { DESK_IDS } from './desks.ts';
@@ -16,4 +18,5 @@ export default toNodeHandler(createApi({
   },
   desks: DESK_IDS,
   writeToken: process.env.OFFICE_TOKEN || undefined,
+  agents: agentsFromEnv(process.env, { requireToken: true, makeCaller: claudeCaller }),
 }));

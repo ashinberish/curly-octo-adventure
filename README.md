@@ -23,8 +23,9 @@ Controls: `WASD` / arrow keys to walk, `E` (or Space) to talk to whoever you're 
 click them or their card. The "!" notice board in Engineering opens the task board. On touch
 screens an on‑screen d‑pad appears.
 
-Agent runs are still **simulated** (milestone M3 swaps in the Claude Agent SDK), but they run
-on the server: tasks keep going while nobody has the page open.
+Without an Anthropic API key, agent runs are **simulated** (canned steps). With one, each
+employee is a real Claude agent: see [Claude agents](#claude-agents). For a free local preview
+of the agent screens, `AGENT_FAKE=1 npm run dev` uses a scripted stand-in model.
 
 ## Layout
 
@@ -36,7 +37,8 @@ apps/web          The game: Phaser 3 world + React panels + Zustand store
   src/ui          React panels (employee, task board, crew cards)
   public/maps     office.json, a Tiled map
   public/assets   Generated tileset and furniture atlas
-apps/server       Office API: router, Postgres queries, the simulated agent runner
+apps/server       Office API: router, Postgres queries, simulated runs
+  src/agent       Claude agents: turn loop, tools, prompts, pricing
 packages/shared   Types, skill catalog and status rules used by both sides
 scripts/          Packaging for Vercel
 mockup/           The original single-file mockup
@@ -63,9 +65,15 @@ npm test
 npm run build
 ```
 
-`npm run smoke -w @pixel-office/web` (after a build) drives the built app in Chromium, using a
-Playwright that is already installed on the machine: it walks around, assigns a task, approves
-a permission request and fails on any page error. Screenshots land in `apps/web/e2e-output/`.
+After a build, two browser tests drive the app in Chromium (using a Playwright already
+installed on the machine) and fail on any page error; screenshots land in `apps/web/e2e-output/`:
+
+- `npm run smoke -w @pixel-office/web`: walking, hiring and firing, assigning, cancelling, approving.
+- `npm run smoke:agents -w @pixel-office/web`: the Claude agent screens (question, answer, files,
+  summary) against the stand-in model.
+
+`ANTHROPIC_API_KEY=… npm run agent:check` makes one real, cheap agent run to check your key,
+model and the request shape (a few cents).
 
 ## Deploying
 
@@ -82,3 +90,38 @@ Root Directory `./`.
 3. Redeploy so the function picks up the variables.
 
 Without a database the site loads but shows “The office has no database yet”.
+
+## Claude agents
+
+Set these in Vercel (Settings → Environment Variables), then redeploy:
+
+| Variable | |
+|---|---|
+| `ANTHROPIC_API_KEY` | Required. Without it, runs are simulated. |
+| `OFFICE_TOKEN` | Required on Vercel too: agents stay simulated without it, so strangers can't spend your credits. (`AGENTS_ALLOW_PUBLIC=1` overrides this; don't.) |
+| `AGENT_DAILY_BUDGET_USD` | Default `5`. Agents pause for the day when the estimated spend reaches it. |
+| `AGENT_MODEL` | Default `claude-opus-5-5`. |
+| `AGENT_EFFORT` | Default `medium` (`low` … `max`): how hard the model thinks per turn, and so its cost. |
+| `AGENT_MAX_TURNS` | Default `40`. A task that hasn't finished after this many model calls fails. |
+
+How it works:
+
+- When a task starts, the employee's agent gets a system prompt from their name, role and
+  skills, and the task as its first message. Skills decide the tools: **Research** gets web
+  search and web fetch; **Code, Data, QA, DevOps** get Anthropic's code-execution sandbox;
+  everyone gets a task **workspace** (`write_file`, `read_file`, `list_files`) and **ask_human**.
+- Deliverables are files in the workspace; open them under **Files** in the employee panel
+  (HTML previews with scripts off) or download them.
+- When an agent calls ask_human the task waits for you: answer in the panel (or Yes / No).
+- Turns run while the office is open in a browser that has the token: the page asks the server
+  to play turns for up to two minutes at a time. Close every tab and work pauses until
+  someone opens it again. (Simulated runs keep going regardless.)
+- Each turn's conversation is saved in Postgres, so nothing is lost between serverless calls.
+  Turns that keep failing (3 in a row) or run past `AGENT_MAX_TURNS` fail the task; Claude's
+  refusals fail it too, after Anthropic's server-side fallback model has had a go.
+- Costs shown are estimates from token usage; the Anthropic Console has the real numbers.
+- The Vercel function is set to run for up to 300 s, which needs Fluid compute (on by default
+  for new projects).
+
+Not yet: access to your GitHub repos or other services, and agents that keep working with
+no browser open.

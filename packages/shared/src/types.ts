@@ -29,7 +29,10 @@ export interface Employee {
   deskId: string;
 }
 
-export type TaskStatus = 'queued' | 'running' | 'needs_input' | 'done' | 'cancelled';
+export type TaskStatus = 'queued' | 'running' | 'needs_input' | 'done' | 'failed' | 'cancelled';
+
+/** Who does the work: a canned simulation, or a real Claude agent. */
+export type Runner = 'sim' | 'claude';
 
 export type LogKind = 'sys' | 'text' | 'tool' | 'perm' | 'done' | 'deny';
 
@@ -52,13 +55,34 @@ export interface Task {
   status: TaskStatus;
   /** 0..1 */
   progress: number;
-  /** Tool call waiting for the user's approval, when status is needs_input. */
+  /**
+   * When status is needs_input: the tool call waiting for approval (simulated runs) or the
+   * agent's question for you (Claude runs).
+   */
   awaiting: string | null;
+  runner: Runner;
+  /** The agent's closing summary, once done (or why it failed). */
+  result: string | null;
+  /** Estimated API spend so far, in US dollars (Claude runs). */
+  costUsd: number;
   /** Epoch ms. */
   createdAt: number;
   startedAt: number | null;
   finishedAt: number | null;
 }
+
+/** A file an agent saved in its task's workspace. */
+export interface TaskFile {
+  path: string;
+  size: number;
+  /** Epoch ms. */
+  updatedAt: number;
+}
+
+/** Whether real Claude agents are on, and why not when they aren't. */
+export type AgentsInfo =
+  | { mode: 'claude'; model: string; spentTodayUsd: number; dailyBudgetUsd: number }
+  | { mode: 'simulated'; reason: string };
 
 /** What an employee is doing right now, as shown in the office. */
 export type EmployeeStatus = 'idle' | 'away' | 'running' | 'needs_input' | 'done';
@@ -74,6 +98,9 @@ export interface OfficeSnapshot {
   tasks: Task[];
   /** Every desk id in the office map. */
   desks: string[];
+  agents: AgentsInfo;
+  /** Claude runs are waiting for someone to call POST /api/work. */
+  workPending: boolean;
 }
 
 export interface NewEmployee {

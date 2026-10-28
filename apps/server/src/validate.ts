@@ -85,8 +85,8 @@ export function taskPatch(body: unknown): TaskPatch {
   return patch;
 }
 
-export function permission(body: unknown): boolean {
+export function permission(body: unknown): { allow: boolean; answer?: string } {
   const o = object(body);
   if (typeof o.allow !== 'boolean') throw new HttpError(400, 'allow must be true or false');
-  return o.allow;
+  return { allow: o.allow, answer: text(o, 'answer', 4000, { min: 0, optional: true }) };
 }

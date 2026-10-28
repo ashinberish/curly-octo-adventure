@@ -1,4 +1,4 @@
-import type { Employee, EmployeePatch, LogLine, NewEmployee, NewTask, OfficeSnapshot, Task, TaskPatch } from '@pixel-office/shared';
+import type { Employee, EmployeePatch, LogLine, NewEmployee, NewTask, OfficeSnapshot, Task, TaskFile, TaskPatch } from '@pixel-office/shared';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -17,7 +17,11 @@ export interface OfficeApi {
   addTask(input: NewTask): Promise<Task>;
   updateTask(id: number, patch: TaskPatch): Promise<Task>;
   cancelTask(id: number): Promise<Task>;
-  answerPermission(id: number, allow: boolean): Promise<Task>;
+  answerPermission(id: number, allow: boolean, answer?: string): Promise<Task>;
+  files(taskId: number): Promise<TaskFile[]>;
+  fileContent(taskId: number, path: string): Promise<string>;
+  /** Plays Claude agent turns on the server for a few minutes. */
+  work(): Promise<{ turns: number; tasks: number }>;
 }
 
 const TOKEN_KEY = 'pixel-office-token';
@@ -57,6 +61,9 @@ export function httpApi(base = '/api', getToken: () => string | null = tokenStor
     addTask: input => call('POST', '/tasks', input),
     updateTask: (id, patch) => call('PATCH', `/tasks/${id}`, patch),
     cancelTask: id => call('POST', `/tasks/${id}/cancel`),
-    answerPermission: (id, allow) => call('POST', `/tasks/${id}/permission`, { allow }),
+    answerPermission: (id, allow, answer) => call('POST', `/tasks/${id}/permission`, { allow, ...(answer ? { answer } : {}) }),
+    files: async taskId => (await call<{ files: TaskFile[] }>('GET', `/tasks/${taskId}/files`)).files,
+    fileContent: async (taskId, path) => (await call<{ content: string }>('GET', `/tasks/${taskId}/files/content?path=${encodeURIComponent(path)}`)).content,
+    work: () => call('POST', '/work', {}),
   };
 }

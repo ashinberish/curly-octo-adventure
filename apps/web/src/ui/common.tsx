@@ -14,7 +14,9 @@ export function useEmployeeStatus(id: string): EmployeeStatus {
   return employeeStatus(id, tasks, presence, officeStore.getState().serverNow());
 }
 
-export const STATUS_LABEL: Record<Task['status'], string> = { queued: 'Queued', running: 'Working', needs_input: 'Needs you', done: 'Done', cancelled: 'Cancelled' };
+export const STATUS_LABEL: Record<Task['status'], string> = { queued: 'Queued', running: 'Working', needs_input: 'Needs you', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+
+export const usd = (n: number) => (n < 0.01 && n > 0 ? '<$0.01' : `$${n.toFixed(2)}`);
 
 const EMPLOYEE_STATUS: Record<EmployeeStatus, [string, string]> = {
   idle: ['idle', '#d8d1c0'],
@@ -47,12 +49,13 @@ export function TaskItem({ task, assignee }: { task: Task; assignee?: string }) 
   return (
     <li className="task">
       <div className="t1">
-        <b title={task.title}>{task.title}</b>
+        <b title={task.result ? `${task.title}\n\n${task.result}` : task.title}>{task.title}</b>
         <span className={`status s-${task.status}`}>{STATUS_LABEL[task.status]}</span>
       </div>
       <div className="meta">
         {assignee && <span>@{assignee}</span>}
         <span>{task.skill}</span>
+        {task.runner === 'claude' && task.costUsd > 0 && <span title="Estimated API cost">{usd(task.costUsd)}</span>}
         {open && (
           <button type="button" className="link" onClick={() => void officeStore.getState().cancelTask(task.id)} aria-label={`Cancel “${task.title}”`}>
             cancel

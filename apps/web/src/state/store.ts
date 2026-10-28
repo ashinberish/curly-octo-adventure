@@ -3,7 +3,7 @@
 // presence (seated / walking / away) and the panels call the actions, which go to
 // the API and then refresh.
 import { createStore } from 'zustand/vanilla';
-import type { Employee, EmployeePatch, LogLine, NewEmployee, Presence, SkillName, Task } from '@pixel-office/shared';
+import type { AgentsInfo, Employee, EmployeePatch, LogLine, NewEmployee, Presence, SkillName, Task, TaskFile } from '@pixel-office/shared';
 import { ApiError, httpApi, tokenStorage, type OfficeApi } from './api.ts';
 
 export type Tab = 'employee' | 'board' | 'hire';
@@ -19,6 +19,7 @@ export interface OfficeState {
   employees: Employee[];
   tasks: Task[];
   desks: string[];
+  agents: AgentsInfo | null;
   /** serverTime - Date.now(), so "finished 3s ago" uses the server's clock. */
   clockOffset: number;
   loaded: boolean;
@@ -38,6 +39,8 @@ export interface OfficeState {
   refresh(): Promise<void>;
   /** Run log lines of a task with ids greater than `after`. */
   fetchLog(taskId: number, after: number): Promise<LogLine[]>;
+  fetchFiles(taskId: number): Promise<TaskFile[]>;
+  fetchFile(taskId: number, path: string): Promise<string>;
   select(id: string | null, opts?: { focus?: boolean }): void;
   setTab(tab: Tab): void;
   toast(text: string): void;
@@ -52,14 +55,19 @@ export interface OfficeState {
   /** Resolves to the assignee's id, or null if it failed. */
   assignTask(assigneeId: string | 'auto', title: string, details: string, skill: SkillName): Promise<string | null>;
   cancelTask(id: number): Promise<void>;
-  resolvePermission(taskId: number, allow: boolean): Promise<void>;
+  /** Answers a task waiting on you: approve/deny a tool (simulated) or answer an agent's question. */
+  resolvePermission(taskId: number, allow: boolean, answer?: string): Promise<void>;
 }
 
 const TOAST_MS = 3500;
+/** Don't start agent work more often than this, even if the server keeps saying there's more. */
+const WORK_SPACING_MS = 3000;
 let toastSeq = 0;
 
 export function createOfficeStore(api: OfficeApi) {
   let refreshSeq = 0;
+  let working = false;
+  let lastWorkAt = 0;
 
   return createStore<OfficeState>()((set, get) => {
     const nameOf = (id: string) => get().employees.find(e => e.id === id)?.name ?? 'Someone';
@@ -78,10 +86,29 @@ export function createOfficeStore(api: OfficeApi) {
       }
     }
 
+    /**
+     * Claude agents only run while someone asks the server to: an open office does that,
+     * one request at a time, whenever the server says runs are waiting.
+     */
+    async function driveWork(): Promise<void> {
+      if (working || Date.now() - lastWorkAt < WORK_SPACING_MS) return;
+      working = true;
+      lastWorkAt = Date.now();
+      try {
+        await api.work();
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) set({ connection: { state: 'locked', message: e.message } });
+      } finally {
+        working = false;
+      }
+      await get().refresh();
+    }
+
     return {
       employees: [],
       tasks: [],
       desks: [],
+      agents: null,
       clockOffset: 0,
       loaded: false,
       connection: { state: 'connecting' },
@@ -106,11 +133,13 @@ export function createOfficeStore(api: OfficeApi) {
             employees: snap.employees,
             tasks: snap.tasks,
             desks: snap.desks,
+            agents: snap.agents,
             clockOffset: snap.serverTime - Date.now(),
             loaded: true,
             connection: prev.connection.state === 'locked' ? prev.connection : { state: 'online' },
             ...(selectedGone ? { selectedId: null } : {}),
           });
+          if (snap.workPending && get().connection.state !== 'locked') void driveWork();
         } catch (e) {
           if (seq !== refreshSeq) return;
           set({ connection: { state: 'offline', message: e instanceof Error ? e.message : String(e) } });
@@ -118,6 +147,8 @@ export function createOfficeStore(api: OfficeApi) {
       },
 
       fetchLog: (taskId, after) => api.events(taskId, after),
+      fetchFiles: taskId => api.files(taskId),
+      fetchFile: (taskId, path) => api.fileContent(taskId, path),
 
       select(id, opts) {
         set(s => ({
@@ -177,8 +208,8 @@ export function createOfficeStore(api: OfficeApi) {
       async cancelTask(id) {
         await change(() => api.cancelTask(id));
       },
-      async resolvePermission(taskId, allow) {
-        await change(() => api.answerPermission(taskId, allow));
+      async resolvePermission(taskId, allow, answer) {
+        await change(() => api.answerPermission(taskId, allow, answer));
       },
     };
   });
@@ -190,8 +221,9 @@ function announce(prev: Task[], next: Task[], nameOf: (id: string) => string, to
   for (const t of next) {
     const was = before.get(t.id);
     if (was === undefined || was === t.status) continue;
-    if (t.status === 'needs_input') toast(`✋ ${nameOf(t.assigneeId)} needs your approval`);
+    if (t.status === 'needs_input') toast(t.runner === 'claude' ? `✋ ${nameOf(t.assigneeId)} has a question for you` : `✋ ${nameOf(t.assigneeId)} needs your approval`);
     if (t.status === 'done') toast(`✓ ${nameOf(t.assigneeId)} finished “${t.title}”`);
+    if (t.status === 'failed') toast(`✘ ${nameOf(t.assigneeId)} couldn’t finish “${t.title}”`);
   }
 }
 

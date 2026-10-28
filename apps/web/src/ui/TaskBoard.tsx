@@ -41,7 +41,8 @@ export function TaskBoard() {
       </form>
 
       {COLUMNS.map(status => {
-        const list = tasks.filter(t => t.status === status).sort((a, b) => b.id - a.id);
+        // Failed runs are listed with the finished ones.
+        const list = tasks.filter(t => t.status === status || (status === 'done' && t.status === 'failed')).sort((a, b) => b.id - a.id);
         return (
           <section key={status}>
             <div className="colhead"><h3>{STATUS_LABEL[status]}</h3><span className={`status s-${status}`}>{list.length}</span></div>

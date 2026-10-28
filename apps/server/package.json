@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "agent:check": "node scripts/check-agent.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.134.0",
     "@electric-sql/pglite": "0.5.9",
     "@neondatabase/serverless": "1.2.0",
     "@pixel-office/shared": "*"

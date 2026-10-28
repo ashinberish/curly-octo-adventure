@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { employeeStatus } from '@pixel-office/shared';
 import { officeStore, type Tab } from '../state/store.ts';
-import { useOffice } from './common.tsx';
+import { usd, useOffice } from './common.tsx';
 import { CrewStrip } from './CrewStrip.tsx';
 import { EmployeePanel } from './EmployeePanel.tsx';
 import { DPad, GameView } from './GameView.tsx';
@@ -61,8 +61,22 @@ function TopBar() {
       <div className="stats">
         {stats.map(([c, label]) => <span key={label} className="stat"><i className="sq" style={{ background: c }} />{label}</span>)}
       </div>
-      <span className="badge" title="Agent runs are simulated until milestone M3">Agents simulated</span>
+      <AgentsBadge />
     </header>
+  );
+}
+
+function AgentsBadge() {
+  const agents = useOffice(s => s.agents);
+  if (!agents) return null;
+  if (agents.mode === 'simulated') {
+    return <button type="button" className="badge" title={agents.reason} onClick={() => officeStore.getState().toast(agents.reason)}>Agents simulated ⓘ</button>;
+  }
+  const over = agents.spentTodayUsd >= agents.dailyBudgetUsd;
+  return (
+    <span className={`badge live${over ? ' over' : ''}`} title={`Real Claude agents (${agents.model}). Estimated spend today; the daily budget is AGENT_DAILY_BUDGET_USD.`}>
+      Claude agents · {usd(agents.spentTodayUsd)} / {usd(agents.dailyBudgetUsd)} today{over ? ' · paused' : ''}
+    </span>
   );
 }
 

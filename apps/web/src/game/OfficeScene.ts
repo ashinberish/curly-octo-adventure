@@ -315,7 +315,9 @@ export class OfficeScene extends Phaser.Scene {
     if (status === 'running') {
       const dots = '.'.repeat(1 + (Math.floor(now / 350) % 3)).padEnd(3, ' ');
       bubble.show(`working${dots}`, '#ffffff', '#2a2630', activeTask(state.tasks, id)?.progress ?? 0);
-    } else if (status === 'needs_input') bubble.show('need your OK!', '#ffe08a', '#2a2630');
+    } else if (status === 'needs_input') {
+      bubble.show(activeTask(state.tasks, id)?.runner === 'claude' ? 'got a question!' : 'need your OK!', '#ffe08a', '#2a2630');
+    }
     else if (status === 'done') bubble.show('done!', '#a9dca3', '#2a2630');
     else {
       const s = state.speech[id];

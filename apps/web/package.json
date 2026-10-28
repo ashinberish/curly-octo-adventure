@@ -10,7 +10,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p .",
     "assets": "node scripts/build-assets.ts",
-    "smoke": "node e2e/smoke.mjs"
+    "smoke": "node e2e/smoke.mjs",
+    "smoke:agents": "node e2e/agents.mjs"
   },
   "dependencies": {
     "@pixel-office/shared": "*",
