@@ -8,7 +8,7 @@ skills, assign them tasks, and watch them work.
 
 ## Running it
 
-Needs Node 22.18 or newer.
+Needs Node 22 (22.18 or newer).
 
 ```bash
 npm install
@@ -59,3 +59,9 @@ npm run build
 `npm run smoke -w @pixel-office/web` (after a build) drives the built app in Chromium, using a
 Playwright that is already installed on the machine: it walks around, assigns a task, approves
 a permission request and fails on any page error. Screenshots land in `apps/web/e2e-output/`.
+
+## Deploying
+
+`vercel.json` at the repo root tells Vercel to install from the root, run the workspace build
+and serve `apps/web/dist`. Import the repo with Root Directory `./`; the framework preset
+doesn't matter because `vercel.json` sets the commands and the output folder.
