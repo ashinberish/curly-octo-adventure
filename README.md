@@ -15,11 +15,16 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
+`npm run dev` serves the game and the office API together. Data is kept in an embedded
+Postgres (PGlite) under `.data/pglite`; delete that folder to start over. Set `DATABASE_URL`
+to use a real Neon database instead.
+
 Controls: `WASD` / arrow keys to walk, `E` (or Space) to talk to whoever you're next to, or
 click them or their card. The "!" notice board in Engineering opens the task board. On touch
 screens an on‑screen d‑pad appears.
 
-Agent runs are still **simulated** (milestone M3 swaps in the Claude Agent SDK).
+Agent runs are still **simulated** (milestone M3 swaps in the Claude Agent SDK), but they run
+on the server: tasks keep going while nobody has the page open.
 
 ## Layout
 
@@ -27,11 +32,13 @@ Agent runs are still **simulated** (milestone M3 swaps in the Claude Agent SDK).
 apps/web          The game: Phaser 3 world + React panels + Zustand store
   src/art         Pixel art drawn in code (characters, tiles, furniture)
   src/game        Phaser scene, NPC behaviour, pathfinding, Tiled map parsing
-  src/state       Store and the simulated agent runner
+  src/state       Store (polls the API) and the API client
   src/ui          React panels (employee, task board, crew cards)
   public/maps     office.json, a Tiled map
   public/assets   Generated tileset and furniture atlas
-packages/shared   Types and the skill catalog, shared with the future server
+apps/server       Office API: router, Postgres queries, the simulated agent runner
+packages/shared   Types, skill catalog and status rules used by both sides
+scripts/          Packaging for Vercel
 mockup/           The original single-file mockup
 ```
 
@@ -62,6 +69,16 @@ a permission request and fails on any page error. Screenshots land in `apps/web/
 
 ## Deploying
 
-`vercel.json` at the repo root tells Vercel to install from the root, run the workspace build
-and serve `apps/web/dist`. Import the repo with Root Directory `./`; the framework preset
-doesn't matter because `vercel.json` sets the commands and the output folder.
+Vercel serves the site and the API (one serverless function) from this repo; `vercel.json`
+runs `npm run build:vercel`, which writes Vercel's Build Output folder. Import the repo with
+Root Directory `./`.
+
+1. **Add a database.** In the Vercel project: Storage → Create Database → Neon, and connect
+   it to the project. That sets `DATABASE_URL`. The first request creates the tables and the
+   demo team.
+2. **Lock it (recommended).** Add an environment variable `OFFICE_TOKEN` with a long random
+   value. Anyone can still look, but changes need the token; the site asks for it once and
+   remembers it in the browser.
+3. Redeploy so the function picks up the variables.
+
+Without a database the site loads but shows “The office has no database yet”.

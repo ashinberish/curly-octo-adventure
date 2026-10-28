@@ -62,6 +62,34 @@ the agent is waiting for your approval.
 
 ## 4. Architecture
 
+### As built (M2): everything on Vercel
+
+```
+┌──────────────────────── Browser ────────────────────────┐
+│  Phaser world + React panels + Zustand store             │
+│  polls GET /api/state every 1.5s, run logs every 1s      │
+└──────────────┬───────────────────────────────────────────┘
+               │ REST
+┌──────────────▼───────────────────────────────────────────┐
+│  Vercel: static site + one Node function at /api/*       │
+│   • apps/server: router, validation, Office (SQL)        │
+│   • simulated runs advance by elapsed time on each poll  │
+└──────────────┬───────────────────────────────────────────┘
+          Neon Postgres (DATABASE_URL)    · PGlite locally and in tests
+```
+
+- There is no long-running process, so the simulation is **time-driven**: each run stores its
+  step and when the next one is due, and whichever request comes next catches it up. Writes use
+  a version check so concurrent polls never play a step twice.
+- Polling instead of WebSockets (serverless functions can't hold sockets open).
+- `scripts/vercel-output.mjs` packages the build with Vercel's Build Output API.
+- Optional `OFFICE_TOKEN`: when set, anything that changes the office needs it.
+- **For M3:** a real agent run takes minutes, longer than a function should run. Options: run
+  each agent turn in its own short invocation and persist the session between them, or add a
+  small always-on worker (the design below) that only runs agents.
+
+### Original design
+
 ```
 ┌──────────────────────── Browser ────────────────────────┐
 │  Phaser 3 scene (map, sprites, bubbles, movement)       │
@@ -177,14 +205,23 @@ design; the exact field names may differ by SDK version.
 
 ## 7. API and live events
 
+As built in M2 (all under `/api`, see `apps/server/src/api.ts`):
+
 ```
-GET    /employees               POST /employees           PATCH /employees/:id
-PUT    /employees/:id/skills    GET  /skills               POST /skills
-GET    /tasks?status=…          POST /tasks {title, details, skillId, assigneeId|"auto"}
-POST   /tasks/:id/cancel        POST /tasks/:id/retry
-POST   /tasks/:id/permission    {requestId, decision: "allow"|"deny", note?}
-WS     /live   → {type:"task.updated"|"run.event"|"employee.status", ...}
+GET    /health
+GET    /state                       employees, open + recent tasks, desk ids, server time
+GET    /tasks/:id/events?after=N   run log lines after id N
+POST   /employees                   hire {name, role, skills, look, deskId?}
+PATCH  /employees/:id               {name?, role?, skills?, look?, deskId?}
+DELETE /employees/:id               fire (their tasks go too)
+POST   /tasks                       {assigneeId | "auto", title, details?, skill}
+PATCH  /tasks/:id                   edit while queued
+POST   /tasks/:id/cancel
+POST   /tasks/:id/permission        {allow: boolean}
 ```
+
+Still to come: retry (M4), user-defined skills, and push updates instead of polling if the
+backend moves off serverless.
 
 Auto‑assign picks employees who have the skill, then the one with the shortest queue.
 
@@ -207,7 +244,7 @@ Auto‑assign picks employees who have the skill, then the one with the shortest
 |---|---|---|
 | M0 | **Mockup** ✅ | Clickable single‑file prototype of the world, panels and flows, agents simulated (`mockup/`) |
 | M1 | **Game world** ✅ | Phaser + Tiled map with the rooms above, character sheets, movement, collisions, NPC pathfinding, interaction prompts, mobile d‑pad (`apps/web`; agents still simulated) |
-| M2 | Office state | Postgres schema, employees/skills/tasks CRUD, React HUD wired to the API, task board |
+| M2 | **Office state** ✅ | Postgres schema, employees/skills/tasks CRUD, React HUD wired to the API, task board (Vercel function + Neon; simulation runs server-side) |
 | M3 | Real agents | BullMQ worker running the Agent SDK per task, skills written into workspaces, events stored and streamed |
 | M4 | Human in the loop | Permission requests, approve/deny, cancel/retry, failure states, notifications |
 | M5 | Polish | Sounds, idle behaviours, XP/levels, cost meter, onboarding tutorial (walk to the boss's desk) |

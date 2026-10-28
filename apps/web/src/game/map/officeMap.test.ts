@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import mapJson from '../../../public/maps/office.json';
-import { SEED_AWAY, SEED_EMPLOYEES } from '../../state/seed.ts';
+import { SEED_AWAY } from '../../state/seed.ts';
 import { findPath } from '../path.ts';
 import { chairTile, parseOfficeMap } from './officeMap.ts';
 import type { TiledMap } from './tiled.ts';
@@ -34,10 +34,7 @@ describe('office map', () => {
     }
   });
 
-  it('gives every seeded employee a desk of their own, and real starting spots', () => {
-    const desks = SEED_EMPLOYEES.map(e => e.deskId);
-    expect(new Set(desks).size).toBe(desks.length);
-    for (const id of desks) expect(office.desks.some(d => d.id === id), id).toBe(true);
+  it('stages people away from their desks only at real places', () => {
     for (const a of Object.values(SEED_AWAY)) expect(office.pois.some(p => p.name === a.poi), a.poi).toBe(true);
   });
 

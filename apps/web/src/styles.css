@@ -86,3 +86,19 @@ textarea{resize:vertical}
 @keyframes blink{50%{opacity:0}}
 .approve{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:8px;border:2px dashed var(--line);border-radius:5px;background:#fff3c4}
 .colhead{display:flex;justify-content:space-between;align-items:center}
+
+/* M2: server-backed office */
+.banner{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:12px 16px 0;padding:8px 12px;border:2px solid var(--line);border-radius:6px;background:#fff3c4;max-width:1468px}
+@media (min-width:1500px){.banner{margin-left:auto;margin-right:auto}}
+.banner.error{background:#f8d2cc}
+.banner input{width:auto;flex:0 1 220px}
+.btn.small{padding:3px 8px;font-size:10px;border-bottom-width:3px}
+.btn:disabled{opacity:.6;cursor:progress}
+.head-actions{display:flex;flex-direction:column;gap:6px;align-self:flex-start}
+.edit{margin-top:12px;padding:10px;border:2px dashed var(--line);border-radius:5px;background:var(--paper-2)}
+.edit label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted)}
+.link{background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:12px;margin-left:auto}
+.link:hover{color:var(--red)}
+.card.hire{flex-basis:150px;border-style:dashed;background:var(--paper-2);align-items:center}
+.card.hire:disabled{cursor:not-allowed;opacity:.6}
+.card .plus{width:48px;height:48px;display:grid;place-items:center;border:2px dashed var(--line);border-radius:4px;font-family:'Silkscreen',monospace;font-size:24px;flex:none}

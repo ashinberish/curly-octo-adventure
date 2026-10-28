@@ -11,21 +11,23 @@ export function TaskBoard() {
   const [title, setTitle] = useState('');
   const [skill, setSkill] = useState<SkillName>('Code');
   const [who, setWho] = useState('auto');
+  const [sending, setSending] = useState(false);
   const nameOf = (id: string) => employees.find(e => e.id === id)?.name ?? id;
 
-  const submit = (ev: FormEvent) => {
+  const submit = async (ev: FormEvent) => {
     ev.preventDefault();
-    if (!title.trim()) return;
-    officeStore.getState().assignTask(who, title.trim(), '', skill);
-    setTitle('');
-    (document.activeElement as HTMLElement | null)?.blur();
+    if (!title.trim() || sending) return;
+    setSending(true);
+    const ok = await officeStore.getState().assignTask(who, title.trim(), '', skill);
+    setSending(false);
+    if (ok) { setTitle(''); (document.activeElement as HTMLElement | null)?.blur(); }
   };
 
   return (
     <div>
       <h3 style={{ marginTop: 0 }}>Quick assign</h3>
-      <form onSubmit={submit} autoComplete="off">
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="What needs doing?" required maxLength={80} aria-label="Task title" />
+      <form onSubmit={e => void submit(e)} autoComplete="off">
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="What needs doing?" required maxLength={120} aria-label="Task title" />
         <div className="row">
           <select value={skill} onChange={e => setSkill(e.target.value as SkillName)} aria-label="Skill needed">
             {SKILL_NAMES.map(s => <option key={s}>{s}</option>)}
@@ -35,7 +37,7 @@ export function TaskBoard() {
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </div>
-        <button className="btn" type="submit">Add to board ▶</button>
+        <button className="btn" type="submit" disabled={sending}>Add to board ▶</button>
       </form>
 
       {COLUMNS.map(status => {

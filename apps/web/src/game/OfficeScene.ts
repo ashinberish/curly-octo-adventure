@@ -1,10 +1,9 @@
 import Phaser from 'phaser';
-import type { EmployeeStatus, Look } from '@pixel-office/shared';
+import { activeTask, employeeStatus, hasOpenWork, type Employee, type EmployeeStatus, type Look } from '@pixel-office/shared';
 import { CHAR_H, CHAR_W, DIRS, FEET_Y, FRAME_COUNT, SEATED_FRAME, drawCharacterSheet, walkFrame, type Dir } from '../art/character.ts';
 import { FURNITURE, MONITOR_RUN_FRAMES } from '../art/furniture.ts';
 import { CanvasPainter } from '../art/painter.ts';
 import { TILE } from '../art/tiles.ts';
-import { activeTask, employeeStatus, hasOpenWork } from '../state/sim.ts';
 import { SEED_AWAY } from '../state/seed.ts';
 import { officeStore, type OfficeState } from '../state/store.ts';
 import { isTyping, virtualInput, type Direction } from './input.ts';
@@ -23,8 +22,10 @@ const INTERACT_RANGE = 9;
 
 interface Actor {
   npc: Npc;
+  /** Texture key of the character sheet, which encodes the look. */
+  sheet: string;
+  deskId: string;
   sprite: Phaser.GameObjects.Sprite;
-  monitor: Phaser.GameObjects.Image;
   tag: Label;
   bubble: Label;
   select: Phaser.GameObjects.Image;
@@ -32,6 +33,8 @@ interface Actor {
 
 type Target = { kind: 'employee'; id: string; box: Box } | { kind: 'interact'; name: string; box: Box };
 interface Box { x: number; y: number; w: number; h: number }
+
+const sheetKey = (look: Look) => `char:${look.style}:${look.hair}:${look.skin}:${look.shirt}:${look.pants}`;
 
 /** Builds a character sprite sheet from a look and registers its walk animations. */
 function ensureCharacter(scene: Phaser.Scene, key: string, look: Look): void {
@@ -59,6 +62,10 @@ export class OfficeScene extends Phaser.Scene {
   private playerTag!: Label;
   private keys!: Record<'up' | 'down' | 'left' | 'right' | 'w' | 'a' | 's' | 'd', Phaser.Input.Keyboard.Key>;
   private actors = new Map<string, Actor>();
+  private monitors = new Map<string, Phaser.GameObjects.Image>();
+  /** The employees array the actors were last built from. */
+  private syncedEmployees: Employee[] | null = null;
+  private stagedOpening = false;
   private prompt!: Phaser.GameObjects.Image;
   private boardBadge!: Label;
   private near: Target | null = null;
@@ -82,7 +89,7 @@ export class OfficeScene extends Phaser.Scene {
     this.office = parseOfficeMap(json);
     this.buildMap();
     this.buildFurniture();
-    this.buildEmployees();
+    this.setupWorld();
     this.buildPlayer();
     this.setupInput();
     this.focusNonce = officeStore.getState().focus?.nonce ?? 0;
@@ -124,6 +131,7 @@ export class OfficeScene extends Phaser.Scene {
 
     for (const d of this.office.desks) {
       this.add.image(d.x * TILE, d.y * TILE, 'furniture', 'desk').setOrigin(0).setDepth((d.y + 1) * TILE);
+      this.monitors.set(d.id, this.add.image(d.x * TILE + 9, d.y * TILE - 8, 'furniture', 'monitor_off').setOrigin(0).setDepth((d.y + 1) * TILE - 0.5));
       this.add.image(d.x * TILE + 10, (d.y + 1) * TILE + 2, 'furniture', 'chair').setOrigin(0).setDepth((d.y + 2) * TILE - 4);
     }
 
@@ -134,9 +142,7 @@ export class OfficeScene extends Phaser.Scene {
     this.prompt = this.add.image(0, 0, 'furniture', 'prompt_e').setOrigin(0.5, 0).setDepth(100_002).setVisible(false);
   }
 
-  private buildEmployees(): void {
-    const state = officeStore.getState();
-    const now = performance.now();
+  private setupWorld(): void {
     this.world = {
       solid: this.office.solid,
       pois: this.office.pois,
@@ -146,14 +152,33 @@ export class OfficeScene extends Phaser.Scene {
       setPresence: (id, p) => officeStore.getState().setPresence(id, p),
       random: Math.random,
     };
+  }
 
-    for (const e of state.employees) {
+  /** Adds, rebuilds and removes people to match the server's list of employees. */
+  private syncActors(employees: Employee[], now: number): void {
+    if (employees === this.syncedEmployees) return;
+    this.syncedEmployees = employees;
+    const state = officeStore.getState();
+    const wanted = new Map(employees.map(e => [e.id, e]));
+
+    for (const [id, a] of this.actors) {
+      const e = wanted.get(id);
+      if (e && e.deskId === a.deskId && sheetKey(e.look) === a.sheet) continue;
+      // Fired, moved desks or changed look: rebuild (or drop) this person.
+      a.sprite.destroy(); a.tag.destroy(); a.bubble.destroy(); a.select.destroy();
+      this.monitors.get(a.deskId)?.setFrame('monitor_off');
+      this.actors.delete(id);
+    }
+
+    for (const e of employees) {
+      if (this.actors.has(e.id)) continue;
       const desk = this.office.desks.find(d => d.id === e.deskId);
       if (!desk) { console.warn(`No desk "${e.deskId}" for ${e.name}`); continue; }
-      const key = `char-${e.id}`;
-      ensureCharacter(this, key, e.look);
+      const sheet = sheetKey(e.look);
+      ensureCharacter(this, sheet, e.look);
       const npc = new Npc(e.id, desk, now, Math.random);
-      const away = SEED_AWAY[e.id];
+      // On first load, stage a few people away from their desks so the office feels lived in.
+      const away = this.stagedOpening ? undefined : SEED_AWAY[e.id];
       const poi = away && this.office.pois.find(p => p.name === away.poi);
       if (poi) {
         npc.placeAt(poi, now, this.world);
@@ -162,14 +187,14 @@ export class OfficeScene extends Phaser.Scene {
         state.setPresence(e.id, 'seated');
       }
       this.actors.set(e.id, {
-        npc,
-        sprite: this.add.sprite(0, 0, key, SEATED_FRAME).setOrigin(0.5, FEET_Y / CHAR_H),
-        monitor: this.add.image(desk.x * TILE + 9, desk.y * TILE - 8, 'furniture', 'monitor_off').setOrigin(0).setDepth((desk.y + 1) * TILE - 0.5),
+        npc, sheet, deskId: e.deskId,
+        sprite: this.add.sprite(0, 0, sheet, SEATED_FRAME).setOrigin(0.5, FEET_Y / CHAR_H),
         tag: new Label(this, 'tag'),
         bubble: new Label(this, 'speech'),
         select: this.add.image(0, 0, 'furniture', 'select').setOrigin(0.5, 0).setVisible(false),
       });
     }
+    if (employees.length) this.stagedOpening = true;
   }
 
   private buildPlayer(): void {
@@ -211,10 +236,12 @@ export class OfficeScene extends Phaser.Scene {
     const dt = Math.min(deltaMs / 1000, 0.05);
     const now = performance.now();
     const state = officeStore.getState();
+    this.syncActors(state.employees, now);
     this.movePlayer();
+    const serverNow = state.serverNow();
     for (const a of this.actors.values()) {
       a.npc.update(dt, now, this.world);
-      this.drawActor(a, state, now);
+      this.drawActor(a, state, now, serverNow);
     }
     this.playerTag.show('YOU', '#34303c', '#ffffff').setPosition(Math.round(this.player.x), Math.round(this.player.y) + 2);
 
@@ -227,7 +254,7 @@ export class OfficeScene extends Phaser.Scene {
     const waiting = state.tasks.filter(t => t.status === 'needs_input').length;
     if (waiting) this.boardBadge.show(String(waiting), '#cf5a4f', '#ffffff'); else this.boardBadge.hide();
 
-    this.updatePrompt(state, now);
+    this.updatePrompt(state, now, serverNow);
   }
 
   private movePlayer(): void {
@@ -249,11 +276,11 @@ export class OfficeScene extends Phaser.Scene {
     this.player.setDepth(this.player.y);
   }
 
-  private drawActor(a: Actor, state: OfficeState, now: number): void {
+  private drawActor(a: Actor, state: OfficeState, now: number, serverNow: number): void {
     const { npc, sprite } = a;
-    const status = employeeStatus(npc.id, state, now);
+    const status = employeeStatus(npc.id, state.tasks, state.presence[npc.id], serverNow);
     const seated = npc.mode === 'seated';
-    const key = `char-${npc.id}`;
+    const key = a.sheet;
     const desk = npc.desk;
 
     if (seated) {
@@ -268,7 +295,7 @@ export class OfficeScene extends Phaser.Scene {
 
     const monitorFrame = status === 'running' ? `monitor_running_${Math.floor(now / 180) % MONITOR_RUN_FRAMES}`
       : status === 'needs_input' || status === 'done' ? `monitor_${status}` : 'monitor_off';
-    a.monitor.setFrame(monitorFrame);
+    this.monitors.get(a.deskId)?.setFrame(monitorFrame);
 
     const selected = state.selectedId === npc.id;
     a.select.setVisible(selected).setAlpha(0.55 + 0.3 * Math.sin(now / 200));
@@ -296,7 +323,7 @@ export class OfficeScene extends Phaser.Scene {
     }
   }
 
-  private updatePrompt(state: OfficeState, now: number): void {
+  private updatePrompt(state: OfficeState, now: number, serverNow: number): void {
     const fx = this.player.x, fy = this.player.y - 4;
     const dist = (b: Box) => Math.hypot(Math.max(b.x - fx, 0, fx - (b.x + b.w)), Math.max(b.y - fy, 0, fy - (b.y + b.h)));
     const targets: Target[] = [
@@ -307,7 +334,7 @@ export class OfficeScene extends Phaser.Scene {
     for (const t of targets) { const d = dist(t.box); if (d < bestD) { best = t; bestD = d; } }
     this.near = best;
     // Hide the prompt over someone who already has a status bubble, so they don't overlap.
-    const busy = best?.kind === 'employee' && !['idle', 'away'].includes(employeeStatus(best.id, state, now));
+    const busy = best?.kind === 'employee' && !['idle', 'away'].includes(employeeStatus(best.id, state.tasks, state.presence[best.id], serverNow));
     if (!best || busy) { this.prompt.setVisible(false); return; }
     const top = best.kind === 'employee' && this.actors.get(best.id)!.npc.mode !== 'seated' ? best.box.y - 2 : best.box.y;
     this.prompt.setVisible(true).setPosition(Math.round(best.box.x + best.box.w / 2), top - 14 - (Math.floor(now / 300) % 2));

@@ -1,13 +1,20 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from 'zustand';
-import type { EmployeeStatus, Look, Task } from '@pixel-office/shared';
+import { employeeStatus, type EmployeeStatus, type Look, type Task } from '@pixel-office/shared';
 import { drawPortrait } from '../art/character.ts';
 import { CanvasPainter } from '../art/painter.ts';
 import { officeStore, type OfficeState } from '../state/store.ts';
 
 export const useOffice = <T,>(selector: (s: OfficeState) => T): T => useStore(officeStore, selector);
 
-export const STATUS_LABEL: Record<Task['status'], string> = { queued: 'Queued', running: 'Working', needs_input: 'Needs you', done: 'Done' };
+/** An employee's status on the server's clock; re-renders whenever office data or presence changes. */
+export function useEmployeeStatus(id: string): EmployeeStatus {
+  const tasks = useOffice(s => s.tasks);
+  const presence = useOffice(s => s.presence[id]);
+  return employeeStatus(id, tasks, presence, officeStore.getState().serverNow());
+}
+
+export const STATUS_LABEL: Record<Task['status'], string> = { queued: 'Queued', running: 'Working', needs_input: 'Needs you', done: 'Done', cancelled: 'Cancelled' };
 
 const EMPLOYEE_STATUS: Record<EmployeeStatus, [string, string]> = {
   idle: ['idle', '#d8d1c0'],
@@ -36,6 +43,7 @@ export function Portrait({ look, size = 48 }: { look: Look; size?: number }) {
 
 export function TaskItem({ task, assignee }: { task: Task; assignee?: string }) {
   const active = task.status === 'running' || task.status === 'needs_input';
+  const open = active || task.status === 'queued';
   return (
     <li className="task">
       <div className="t1">
@@ -45,6 +53,11 @@ export function TaskItem({ task, assignee }: { task: Task; assignee?: string }) 
       <div className="meta">
         {assignee && <span>@{assignee}</span>}
         <span>{task.skill}</span>
+        {open && (
+          <button type="button" className="link" onClick={() => void officeStore.getState().cancelTask(task.id)} aria-label={`Cancel “${task.title}”`}>
+            cancel
+          </button>
+        )}
       </div>
       {active && <div className="mini"><i style={{ width: `${Math.round(task.progress * 100)}%` }} /></div>}
     </li>

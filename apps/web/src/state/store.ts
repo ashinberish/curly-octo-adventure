@@ -1,101 +1,199 @@
 // The one store shared by the Phaser world and the React panels.
-// The world writes presence (seated / walking / away) and reads statuses;
-// the panels read everything and call the actions.
+// Office data (employees, tasks) comes from the server by polling; the world adds
+// presence (seated / walking / away) and the panels call the actions, which go to
+// the API and then refresh.
 import { createStore } from 'zustand/vanilla';
-import type { Presence, SkillName } from '@pixel-office/shared';
-import { createTask, resolvePermission, stepSimulation, suggestAssignees, type SimState } from './sim.ts';
-import { SEED_AWAY, SEED_EMPLOYEES, seedTasks } from './seed.ts';
+import type { Employee, EmployeePatch, LogLine, NewEmployee, Presence, SkillName, Task } from '@pixel-office/shared';
+import { ApiError, httpApi, tokenStorage, type OfficeApi } from './api.ts';
 
-export type Tab = 'employee' | 'board';
+export type Tab = 'employee' | 'board' | 'hire';
 
-export interface OfficeState extends SimState {
+export type Connection =
+  | { state: 'connecting' }
+  | { state: 'online' }
+  | { state: 'offline'; message: string }
+  /** Reads work, but changes need a token. */
+  | { state: 'locked'; message: string };
+
+export interface OfficeState {
+  employees: Employee[];
+  tasks: Task[];
+  desks: string[];
+  /** serverTime - Date.now(), so "finished 3s ago" uses the server's clock. */
+  clockOffset: number;
+  loaded: boolean;
+  connection: Connection;
+
   selectedId: string | null;
   tab: Tab;
   toasts: Array<{ id: number; text: string }>;
   /** Short speech bubbles, by employee id. */
   speech: Record<string, { text: string; until: number }>;
+  /** Where each employee's body is, reported by the game world. */
+  presence: Record<string, Presence>;
   /** Bumped when the camera should move to an employee. */
   focus: { id: string; nonce: number } | null;
-  nextTaskId: number;
 
+  serverNow(): number;
+  refresh(): Promise<void>;
+  /** Run log lines of a task with ids greater than `after`. */
+  fetchLog(taskId: number, after: number): Promise<LogLine[]>;
   select(id: string | null, opts?: { focus?: boolean }): void;
   setTab(tab: Tab): void;
   toast(text: string): void;
   say(id: string, text: string, ms?: number): void;
   setPresence(id: string, presence: Presence): void;
-  toggleSkill(id: string, skill: SkillName): void;
-  /** Returns the id of the employee the task went to. */
-  assignTask(assigneeId: string | 'auto', title: string, details: string, skill: SkillName): string;
-  resolvePermission(taskId: number, allow: boolean): void;
-  tick(now: number): void;
+  setToken(token: string): Promise<void>;
+
+  hire(input: NewEmployee): Promise<Employee | null>;
+  updateEmployee(id: string, patch: EmployeePatch): Promise<boolean>;
+  fire(id: string): Promise<boolean>;
+  toggleSkill(id: string, skill: SkillName): Promise<void>;
+  /** Resolves to the assignee's id, or null if it failed. */
+  assignTask(assigneeId: string | 'auto', title: string, details: string, skill: SkillName): Promise<string | null>;
+  cancelTask(id: number): Promise<void>;
+  resolvePermission(taskId: number, allow: boolean): Promise<void>;
 }
 
 const TOAST_MS = 3500;
 let toastSeq = 0;
 
-export function createOfficeStore(initial?: Partial<SimState>) {
-  return createStore<OfficeState>()((set, get) => ({
-    employees: SEED_EMPLOYEES,
-    tasks: seedTasks(),
-    runs: {},
-    presence: Object.fromEntries(SEED_EMPLOYEES.map(e => [e.id, SEED_AWAY[e.id] ? 'away' : 'seated'])),
-    flashUntil: {},
-    selectedId: null,
-    tab: 'employee',
-    toasts: [],
-    speech: {},
-    focus: null,
-    nextTaskId: 100,
-    ...initial,
+export function createOfficeStore(api: OfficeApi) {
+  let refreshSeq = 0;
 
-    select(id, opts) {
-      set(s => ({
-        selectedId: id,
-        tab: id ? 'employee' : s.tab,
-        focus: id && opts?.focus ? { id, nonce: (s.focus?.nonce ?? 0) + 1 } : s.focus,
-      }));
-    },
-    setTab(tab) { set({ tab }); },
-    toast(text) {
-      const id = ++toastSeq;
-      set(s => ({ toasts: [...s.toasts, { id, text }].slice(-3) }));
-      setTimeout(() => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })), TOAST_MS);
-    },
-    say(id, text, ms = 3500) {
-      set(s => ({ speech: { ...s.speech, [id]: { text, until: performance.now() + ms } } }));
-    },
-    setPresence(id, presence) {
-      if (get().presence[id] !== presence) set(s => ({ presence: { ...s.presence, [id]: presence } }));
-    },
-    toggleSkill(id, skill) {
-      const e = get().employees.find(e => e.id === id);
-      if (!e) return;
-      const has = e.skills.includes(skill);
-      set(s => ({ employees: s.employees.map(x => (x === e ? { ...e, skills: has ? e.skills.filter(k => k !== skill) : [...e.skills, skill] } : x)) }));
-      get().say(id, has ? `forgot ${skill}?` : `learned ${skill}!`);
-    },
-    assignTask(assigneeId, title, details, skill) {
-      const s = get();
-      const id = assigneeId === 'auto' ? (suggestAssignees(s.employees, s.tasks, skill)[0] ?? s.employees[0]).id : assigneeId;
-      set({ tasks: [...s.tasks, createTask(s.nextTaskId, id, title, details, skill)], nextTaskId: s.nextTaskId + 1 });
-      const name = s.employees.find(e => e.id === id)?.name ?? id;
-      get().toast(`📋 “${title}” → ${name}`);
-      get().say(id, 'on it!');
-      return id;
-    },
-    resolvePermission(taskId, allow) {
-      set(s => resolvePermission(s, taskId, allow, performance.now()));
-    },
-    tick(now) {
-      const { state, events, changed } = stepSimulation(get(), now);
-      if (changed) set({ tasks: state.tasks, runs: state.runs, flashUntil: state.flashUntil });
-      for (const ev of events) {
-        if (ev.type === 'toast') get().toast(ev.text);
-        else get().say(ev.employeeId, ev.text);
+  return createStore<OfficeState>()((set, get) => {
+    const nameOf = (id: string) => get().employees.find(e => e.id === id)?.name ?? 'Someone';
+
+    /** Runs a change against the server, reports failures as toasts, then refreshes. */
+    async function change<T>(fn: () => Promise<T>): Promise<T | null> {
+      try {
+        const out = await fn();
+        await get().refresh();
+        return out;
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) set({ connection: { state: 'locked', message: e.message } });
+        get().toast(`⚠ ${e instanceof Error ? e.message : String(e)}`);
+        await get().refresh();
+        return null;
       }
-    },
-  }));
+    }
+
+    return {
+      employees: [],
+      tasks: [],
+      desks: [],
+      clockOffset: 0,
+      loaded: false,
+      connection: { state: 'connecting' },
+      selectedId: null,
+      tab: 'employee',
+      toasts: [],
+      speech: {},
+      presence: {},
+      focus: null,
+
+      serverNow: () => Date.now() + get().clockOffset,
+
+      async refresh() {
+        const seq = ++refreshSeq;
+        try {
+          const snap = await api.state();
+          if (seq !== refreshSeq) return; // a newer refresh already landed
+          const prev = get();
+          if (prev.loaded) announce(prev.tasks, snap.tasks, nameOf, get().toast);
+          const selectedGone = prev.selectedId && !snap.employees.some(e => e.id === prev.selectedId);
+          set({
+            employees: snap.employees,
+            tasks: snap.tasks,
+            desks: snap.desks,
+            clockOffset: snap.serverTime - Date.now(),
+            loaded: true,
+            connection: prev.connection.state === 'locked' ? prev.connection : { state: 'online' },
+            ...(selectedGone ? { selectedId: null } : {}),
+          });
+        } catch (e) {
+          if (seq !== refreshSeq) return;
+          set({ connection: { state: 'offline', message: e instanceof Error ? e.message : String(e) } });
+        }
+      },
+
+      fetchLog: (taskId, after) => api.events(taskId, after),
+
+      select(id, opts) {
+        set(s => ({
+          selectedId: id,
+          tab: id ? 'employee' : s.tab,
+          focus: id && opts?.focus ? { id, nonce: (s.focus?.nonce ?? 0) + 1 } : s.focus,
+        }));
+      },
+      setTab(tab) { set({ tab }); },
+      toast(text) {
+        const id = ++toastSeq;
+        set(s => ({ toasts: [...s.toasts, { id, text }].slice(-3) }));
+        setTimeout(() => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })), TOAST_MS);
+      },
+      say(id, text, ms = 3500) {
+        set(s => ({ speech: { ...s.speech, [id]: { text, until: performance.now() + ms } } }));
+      },
+      setPresence(id, presence) {
+        if (get().presence[id] !== presence) set(s => ({ presence: { ...s.presence, [id]: presence } }));
+      },
+      async setToken(token) {
+        tokenStorage.set(token.trim() || null);
+        set({ connection: { state: 'connecting' } });
+        await get().refresh();
+      },
+
+      async hire(input) {
+        const e = await change(() => api.hire(input));
+        if (e) { get().toast(`👋 Welcome, ${e.name}!`); get().say(e.id, 'hi everyone!'); }
+        return e;
+      },
+      async updateEmployee(id, patch) {
+        return (await change(() => api.updateEmployee(id, patch))) !== null;
+      },
+      async fire(id) {
+        const name = nameOf(id);
+        const ok = (await change(() => api.fire(id).then(() => true))) === true;
+        if (ok) get().toast(`📦 ${name} has left the office`);
+        return ok;
+      },
+      async toggleSkill(id, skill) {
+        const e = get().employees.find(e => e.id === id);
+        if (!e) return;
+        const has = e.skills.includes(skill);
+        const skills = has ? e.skills.filter(k => k !== skill) : [...e.skills, skill];
+        // Optimistic: chips respond instantly; the refresh after the call corrects it if it failed.
+        set(s => ({ employees: s.employees.map(x => (x.id === id ? { ...x, skills } : x)) }));
+        if (await change(() => api.updateEmployee(id, { skills }))) get().say(id, has ? `forgot ${skill}?` : `learned ${skill}!`);
+      },
+      async assignTask(assigneeId, title, details, skill) {
+        const task = await change(() => api.addTask({ assigneeId, title, details, skill }));
+        if (!task) return null;
+        get().toast(`📋 “${title}” → ${nameOf(task.assigneeId)}`);
+        get().say(task.assigneeId, 'on it!');
+        return task.assigneeId;
+      },
+      async cancelTask(id) {
+        await change(() => api.cancelTask(id));
+      },
+      async resolvePermission(taskId, allow) {
+        await change(() => api.answerPermission(taskId, allow));
+      },
+    };
+  });
+}
+
+/** Toasts for things that happened between two polls. */
+function announce(prev: Task[], next: Task[], nameOf: (id: string) => string, toast: (text: string) => void): void {
+  const before = new Map(prev.map(t => [t.id, t.status]));
+  for (const t of next) {
+    const was = before.get(t.id);
+    if (was === undefined || was === t.status) continue;
+    if (t.status === 'needs_input') toast(`✋ ${nameOf(t.assigneeId)} needs your approval`);
+    if (t.status === 'done') toast(`✓ ${nameOf(t.assigneeId)} finished “${t.title}”`);
+  }
 }
 
 export type OfficeStore = ReturnType<typeof createOfficeStore>;
-export const officeStore = createOfficeStore();
+export const officeStore = createOfficeStore(httpApi(import.meta.env.VITE_API_BASE ?? '/api'));
