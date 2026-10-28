@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pixel Office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14121f; --panel:#1f1c30; --panel-2:#2a2640; --line:#3d3860;
+  --text:#f2ecff; --muted:#a59fc4; --accent:#ffcc4d;
+  --blue:#4f9dff; --green:#5fd38d; --red:#ff6b6b; --yellow:#ffcc4d; --purple:#b48cff;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:'VT323',ui-monospace,monospace;font-size:20px;line-height:1.15;min-height:100vh}
+.pix{font-family:'Press Start 2P',monospace}
+button,input,select,textarea{font:inherit;color:inherit}
+header.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:2px solid var(--line);background:var(--panel)}
+header.top h1{font-family:'Press Start 2P',monospace;font-size:14px;margin:0;letter-spacing:1px}
+header.top h1 span{color:var(--accent)}
+.stats{display:flex;gap:8px;flex-wrap:wrap}
+.stat{display:flex;align-items:center;gap:6px;padding:2px 8px;border:2px solid var(--line);background:var(--panel-2)}
+.dot{width:10px;height:10px;display:inline-block}
+.badge{font-family:'Press Start 2P',monospace;font-size:8px;padding:4px 6px;background:#3a2a10;color:var(--accent);border:2px solid var(--accent)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;padding:16px;max-width:1400px;margin:0 auto}
+@media (max-width:960px){main{grid-template-columns:minmax(0,1fr)}}
+.stage{min-width:0}
+.frame{border:4px solid #000;outline:4px solid var(--line);background:#000;position:relative}
+canvas#game{display:block;width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer}
+.help{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--muted);margin-top:10px}
+kbd{font-family:'Press Start 2P',monospace;font-size:9px;padding:2px 5px;border:2px solid var(--line);border-bottom-width:4px;background:var(--panel-2);color:var(--text)}
+#toasts{position:absolute;left:8px;bottom:8px;display:flex;flex-direction:column;gap:6px;pointer-events:none;max-width:calc(100% - 16px)}
+.toast{background:rgba(20,18,31,.92);border:2px solid var(--accent);padding:4px 10px;animation:pop .2s steps(3)}
+@keyframes pop{from{transform:scale(.8);opacity:0}to{transform:none;opacity:1}}
+.dpad{display:none;margin-top:12px;gap:6px;justify-content:center}
+.dpad button{width:56px;height:56px;background:var(--panel-2);border:3px solid var(--line);font-family:'Press Start 2P',monospace;font-size:12px;touch-action:none}
+@media (pointer:coarse){.dpad{display:grid;grid-template-columns:repeat(3,56px)}}
+
+aside.panel{background:var(--panel);border:2px solid var(--line);min-width:0;display:flex;flex-direction:column;max-height:calc(100vh - 100px);position:sticky;top:16px}
+@media (max-width:960px){aside.panel{max-height:none;position:static}}
+.tabs{display:flex;border-bottom:2px solid var(--line)}
+.tabs button{flex:1;padding:10px 6px;background:transparent;border:0;border-right:2px solid var(--line);cursor:pointer;font-family:'Press Start 2P',monospace;font-size:9px;color:var(--muted)}
+.tabs button:last-child{border-right:0}
+.tabs button[aria-selected=true]{background:var(--panel-2);color:var(--accent)}
+.tabbody{padding:14px;overflow:auto;flex:1}
+h2{font-family:'Press Start 2P',monospace;font-size:13px;margin:0 0 6px}
+h3{font-family:'Press Start 2P',monospace;font-size:9px;color:var(--muted);margin:16px 0 8px;text-transform:uppercase;letter-spacing:1px}
+.empty{color:var(--muted);text-align:center;padding:30px 10px}
+.empty .pix{font-size:10px;color:var(--text);display:block;margin-bottom:10px}
+.emp-head{display:flex;gap:12px;align-items:center}
+.emp-head canvas{width:72px;height:72px;image-rendering:pixelated;background:var(--panel-2);border:2px solid var(--line);flex:none}
+.role{color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:1px 8px;border:2px solid currentColor}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:2px 8px;border:2px solid var(--line);background:transparent;cursor:pointer;color:var(--muted)}
+.chip.on{color:#14121f;border-color:transparent;font-weight:bold}
+.chip:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hint{color:var(--muted);font-size:17px;margin:6px 0 0}
+form{display:flex;flex-direction:column;gap:8px}
+input,textarea,select{background:#120f1e;border:2px solid var(--line);padding:6px 8px;width:100%;min-width:0}
+textarea{resize:vertical}
+.row{display:flex;gap:8px}
+.row select{flex:1}
+.btn{background:var(--accent);color:#14121f;border:0;border-bottom:4px solid #b88a1c;padding:6px 12px;cursor:pointer;font-family:'Press Start 2P',monospace;font-size:9px;white-space:nowrap}
+.btn:active{border-bottom-width:1px;margin-top:3px}
+.btn.ghost{background:var(--panel-2);color:var(--text);border-bottom-color:#000}
+.btn.green{background:var(--green);border-bottom-color:#2d8a52}
+.btn.red{background:var(--red);border-bottom-color:#a83c3c}
+.warn{color:var(--yellow);font-size:17px;min-height:0}
+.tasks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.task{border:2px solid var(--line);background:var(--panel-2);padding:6px 8px}
+.task .t1{display:flex;justify-content:space-between;gap:8px}
+.task .t1 b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task .meta{color:var(--muted);font-size:17px;display:flex;gap:8px;flex-wrap:wrap}
+.bar{height:6px;background:#120f1e;margin-top:5px}
+.bar i{display:block;height:100%;background:var(--blue);transition:width .4s steps(6)}
+.status{font-family:'Press Start 2P',monospace;font-size:7px;padding:3px 4px;white-space:nowrap;align-self:flex-start}
+.s-queued{background:#3d3860;color:var(--text)}
+.s-running{background:var(--blue);color:#0c1430}
+.s-needs_input{background:var(--yellow);color:#2a1d00}
+.s-done{background:var(--green);color:#0c2a18}
+.console{background:#0b0a12;border:2px solid var(--line);padding:8px;height:200px;overflow:auto;font-size:18px}
+.console div{white-space:pre-wrap;word-break:break-word}
+.console .sys{color:var(--muted)}
+.console .tool{color:var(--blue)}
+.console .perm{color:var(--yellow)}
+.console .done{color:var(--green)}
+.console .deny{color:var(--red)}
+.console .cursor{display:inline-block;width:9px;height:16px;background:var(--text);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.approve{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:8px;border:2px dashed var(--yellow)}
+.cols{display:flex;flex-direction:column;gap:4px}
+.colhead{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+.colhead:first-child{margin-top:0}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>PIXEL<span>OFFICE</span></h1>
+  <div class="stats" id="stats"></div>
+  <span class="badge" title="No real agents are called in this mockup">MOCKUP · AGENTS SIMULATED</span>
+</header>
+
+<main>
+  <section class="stage">
+    <div class="frame">
+      <canvas id="game" aria-label="Pixel office. Use arrow keys or WASD to walk, E to interact."></canvas>
+      <div id="toasts" aria-live="polite"></div>
+    </div>
+    <div class="help">
+      <span><kbd>WASD</kbd>/<kbd>↑↓←→</kbd> walk</span>
+      <span><kbd>E</kbd> talk / interact</span>
+      <span>or click an employee</span>
+      <span>Whiteboard = task board · ☕ = coffee</span>
+    </div>
+    <div class="dpad" aria-hidden="true">
+      <span></span><button data-k="ArrowUp">▲</button><span></span>
+      <button data-k="ArrowLeft">◀</button><button data-k="e">E</button><button data-k="ArrowRight">▶</button>
+      <span></span><button data-k="ArrowDown">▼</button><span></span>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="emp" aria-selected="true">Employee</button>
+      <button role="tab" data-tab="board" aria-selected="false">Task board</button>
+    </div>
+
+    <div class="tabbody" id="tab-emp">
+      <div class="empty" id="emp-empty">
+        <span class="pix">Nobody selected</span>
+        Walk up to a desk and press <kbd>E</kbd>, or click someone in the office.
+      </div>
+      <div id="emp-view" hidden>
+        <div class="emp-head">
+          <canvas id="portrait" width="48" height="48"></canvas>
+          <div>
+            <h2 id="emp-name"></h2>
+            <div class="role" id="emp-role"></div>
+            <div class="pill" id="emp-status"></div>
+          </div>
+        </div>
+
+        <h3>Skills <span style="text-transform:none;letter-spacing:0">(click to toggle)</span></h3>
+        <div class="chips" id="emp-skills"></div>
+        <p class="hint" id="skill-tools"></p>
+
+        <h3>Assign a task</h3>
+        <form id="task-form" autocomplete="off">
+          <input id="t-title" placeholder="e.g. Add rate limiting to /api/login" required maxlength="80">
+          <textarea id="t-desc" rows="2" placeholder="Details, acceptance criteria…"></textarea>
+          <div class="row">
+            <select id="t-skill" aria-label="Skill needed"></select>
+            <button class="btn" type="submit" id="t-submit">Assign ▶</button>
+          </div>
+          <div class="warn" id="t-warn"></div>
+        </form>
+
+        <h3>Queue</h3>
+        <ul class="tasks" id="emp-queue"></ul>
+
+        <h3>Agent console</h3>
+        <div class="console" id="emp-console"></div>
+        <div id="emp-approve"></div>
+      </div>
+    </div>
+
+    <div class="tabbody" id="tab-board" hidden>
+      <h3 style="margin-top:0">Quick assign</h3>
+      <form id="board-form" autocomplete="off">
+        <input id="b-title" placeholder="What needs doing?" required maxlength="80">
+        <div class="row">
+          <select id="b-skill" aria-label="Skill needed"></select>
+          <select id="b-who" aria-label="Assignee"></select>
+        </div>
+        <button class="btn" type="submit">Add to board ▶</button>
+      </form>
+      <div id="board-cols" style="margin-top:14px"></div>
+    </div>
+  </aside>
+</main>
+
+<script>
+(() => {
+// ───────────────────────── Config & data ─────────────────────────
+const T = 16, COLS = 20, ROWS = 12, S = 3;
+
+const SKILLS = {
+  Code:     { color:'#4f9dff', tools:'Read · Edit · Bash' },
+  Research: { color:'#b48cff', tools:'WebSearch · WebFetch' },
+  Writing:  { color:'#ffcc4d', tools:'Read · Write' },
+  Design:   { color:'#ff8fc7', tools:'Write · HTML/CSS preview' },
+  Data:     { color:'#5fd38d', tools:'Bash(python) · Read' },
+  QA:       { color:'#ff9f5a', tools:'Bash(test runner) · Read' },
+  DevOps:   { color:'#6be3e3', tools:'Bash · Edit · GitHub MCP' },
+};
+
+const SCRIPTS = {
+  Code: ['Reading repository layout…','→ Glob("src/**/*.ts")','→ Read("src/routes/auth.ts")','Plan: 1) add middleware 2) wire route 3) test','→ Edit("src/middleware/rateLimit.ts")','→ Edit("src/routes/auth.ts")','@perm Bash(npm test)','→ Bash("npm test") — 48 passed','Writing summary for reviewer…'],
+  Research: ['Breaking question into sub-queries…','→ WebSearch("…")','→ WebFetch(source 1)','→ WebFetch(source 2)','Cross-checking claims between sources','Drafting findings with citations…'],
+  Writing: ['Reading brief & tone guide…','Outlining 4 sections','→ Write("draft.md")','Tightening copy, checking length','Self-review pass…'],
+  Design: ['Reviewing brand tokens…','Sketching 3 layout options','→ Write("mockup.html")','Rendering preview…','Checking contrast & mobile width'],
+  Data: ['Inspecting schema…','→ Read("data/signups.csv")','@perm Bash(python analyze.py)','→ Bash("python analyze.py") — 12,408 rows','Found +18% WoW spike on Tue','→ Write("report.md") with 2 charts'],
+  QA: ['Mapping untested paths…','→ Grep("export function")','→ Write("tests/cart.test.ts")','@perm Bash(npm test -- cart)','→ Bash("npm test -- cart") — 1 failing','Isolating flaky assertion…','Fix + re-run — 9 passed'],
+  DevOps: ['Reading CI config…','→ Read(".github/workflows/ci.yml")','Adding cache step for node_modules','→ Edit(".github/workflows/ci.yml")','@perm Bash(act -j build)','→ Bash("act -j build") — 3m12s → 1m40s','Preparing PR description…'],
+};
+const RESULTS = {
+  Code:'✓ Done — branch pushed, draft PR opened (simulated)',
+  Research:'✓ Done — 1-page brief with 6 citations',
+  Writing:'✓ Done — draft.md ready for review',
+  Design:'✓ Done — mockup.html with 3 variants',
+  Data:'✓ Done — report.md (2 charts, 3 insights)',
+  QA:'✓ Done — 9 new tests, 1 flaky test fixed',
+  DevOps:'✓ Done — CI 47% faster, PR ready',
+};
+
+const EMPLOYEES = [
+  { id:'ada',   name:'Ada',   role:'Backend Engineer', skills:['Code','DevOps'],     look:{hair:'#2b1d14',skin:'#f1c27d',shirt:'#4f7cff',pants:'#2b2d42'}, desk:{x:1,y:4} },
+  { id:'grace', name:'Grace', role:'Data Analyst',     skills:['Data','Research'],   look:{hair:'#b8402e',skin:'#ffdbac',shirt:'#3fb871',pants:'#3d3d5c'}, desk:{x:5,y:4} },
+  { id:'linus', name:'Linus', role:'QA Engineer',      skills:['QA','Code'],         look:{hair:'#e8d27a',skin:'#e0ac69',shirt:'#ff9f5a',pants:'#2b2d42'}, desk:{x:9,y:4} },
+  { id:'maya',  name:'Maya',  role:'Product Designer', skills:['Design','Writing'],  look:{hair:'#141414',skin:'#8d5524',shirt:'#ff8fc7',pants:'#40355e'}, desk:{x:1,y:8} },
+  { id:'sam',   name:'Sam',   role:'Researcher',       skills:['Research','Writing'],look:{hair:'#6b4226',skin:'#c68642',shirt:'#9b78f0',pants:'#2b2d42'}, desk:{x:5,y:8} },
+];
+EMPLOYEES.forEach(e => { e.current = null; e.flashUntil = 0; });
+const byId = id => EMPLOYEES.find(e => e.id === id);
+
+let taskSeq = 1;
+const tasks = [];
+function addTask(assignee, title, desc, skill) {
+  const t = { id: taskSeq++, assignee, title, desc, skill, status:'queued', step:0, progress:0, log:[], nextAt:0, awaiting:null };
+  t.log.push({ k:'sys', m:`Queued: “${title}” [${skill}]` });
+  tasks.push(t);
+  return t;
+}
+// seed a lived-in office
+addTask('grace','Analyze Q3 signup funnel','','Data');
+addTask('ada','Add rate limiting to /api/login','','Code');
+addTask('ada','Speed up CI pipeline','','DevOps');
+const seeded = addTask('sam','Competitor pricing scan','','Research');
+seeded.status = 'done'; seeded.progress = 1; seeded.step = SCRIPTS.Research.length;
+seeded.log.push({ k:'done', m:RESULTS.Research });
+
+// ───────────────────────── World layout ─────────────────────────
+const blocked = Array.from({ length: ROWS }, (_, r) => Array(COLS).fill(r < 2));
+const block = (x, y, w = 1, h = 1) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) if (blocked[j]) blocked[j][i] = true; };
+
+const FURN = [
+  { type:'rug',   x:13, y:4, w:6, h:4, solid:false },
+  { type:'rug2',  x:13, y:9, w:5, h:3, solid:false },
+  { type:'table', x:14, y:5, w:4, h:2 },
+  { type:'chair', x:15, y:4 }, { type:'chair', x:16, y:4 },
+  { type:'chairB',x:15, y:7 }, { type:'chairB',x:16, y:7 },
+  { type:'coffee',x:19, y:2 },
+  { type:'cooler',x:12, y:2 },
+  { type:'plant', x:0,  y:2 }, { type:'plant', x:8,  y:2 },
+  { type:'plant', x:0,  y:11 }, { type:'plant', x:19, y:11 },
+  { type:'shelf', x:10, y:8, w:2, h:1 },
+  { type:'couch', x:14, y:10, w:3, h:1 },
+];
+FURN.forEach(f => { f.w = f.w || 1; f.h = f.h || 1; if (f.solid !== false) block(f.x, f.y, f.w, f.h); });
+EMPLOYEES.forEach(e => { block(e.desk.x, e.desk.y, 2, 1); block(e.desk.x, e.desk.y - 1, 2, 1); });
+
+const BOARD = { x:14*T, y:T, w:4*T, h:T };
+const COFFEE = { x:19*T, y:2*T, w:T, h:T };
+
+const player = { x: 9*T, y: 6*T, dir:'down', moving:false, anim:0 };
+let selectedId = null, nearTarget = null;
+
+// ───────────────────────── Canvas ─────────────────────────
+const cv = document.getElementById('game');
+cv.width = COLS*T*S; cv.height = ROWS*T*S;
+const ctx = cv.getContext('2d');
+
+function rect(c, x, y, w, h, col) { c.fillStyle = col; c.fillRect(x, y, w, h); }
+
+function drawChar(c, x, y, look, dir, frame, seated) {
+  const R = (a, b, w, h, col) => rect(c, x + a, y + b, w, h, col);
+  if (!seated) {
+    R(3, 15, 10, 1, 'rgba(0,0,0,.25)');
+    const l = frame === 1 ? 1 : 0, r = frame === 3 ? 1 : 0;
+    R(5, 12, 2, 3 - l, look.pants); R(9, 12, 2, 3 - r, look.pants);
+    R(5, 15 - l, 2, 1, '#1d1b26'); R(9, 15 - r, 2, 1, '#1d1b26');
+  }
+  R(4, 8, 8, 5, look.shirt);
+  R(4, 8, 8, 1, 'rgba(255,255,255,.18)');
+  R(3, 9, 1, 3, look.skin); R(12, 9, 1, 3, look.skin);
+  R(4, 2, 8, 6, look.skin);
+  R(4, 1, 8, 2, look.hair); R(3, 2, 1, 3, look.hair); R(12, 2, 1, 3, look.hair);
+  if (dir === 'up') { R(4, 2, 8, 5, look.hair); return; }
+  const ex = dir === 'left' ? -1 : dir === 'right' ? 1 : 0;
+  R(6 + ex, 5, 1, 1, '#1a1a2e'); R(9 + ex, 5, 1, 1, '#1a1a2e');
+  if (dir === 'down') R(7, 7, 2, 1, 'rgba(120,40,30,.55)');
+}
+
+function empStatus(e) {
+  const t = e.current && tasks.find(t => t.id === e.current);
+  if (t && t.status === 'needs_input') return 'needs_input';
+  if (t && t.status === 'running') return 'running';
+  if (performance.now() < e.flashUntil) return 'done';
+  return 'idle';
+}
+const empPos = e => ({ x: e.desk.x*T + 8, y: (e.desk.y - 1)*T + 5 });
+const empBox = e => ({ x: e.desk.x*T, y: (e.desk.y - 1)*T, w: 2*T, h: 2*T });
+
+function drawFloor(now) {
+  for (let r = 2; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    rect(ctx, c*T, r*T, T, T, (r + c) % 2 ? '#c8a27a' : '#bf9870');
+    rect(ctx, c*T, r*T + 15, T, 1, 'rgba(90,55,25,.25)');
+  }
+  // walls
+  rect(ctx, 0, 0, COLS*T, T, '#2e2a48');
+  rect(ctx, 0, T, COLS*T, T, '#d8c8a8');
+  rect(ctx, 0, T, COLS*T, 2, '#bfae8c');
+  rect(ctx, 0, 2*T - 2, COLS*T, 2, '#8a7458');
+  for (const wx of [1, 5, 9]) {
+    rect(ctx, wx*T + 2, T + 3, 2*T - 4, 10, '#6d5a8a');
+    rect(ctx, wx*T + 3, T + 4, 2*T - 6, 8, '#9fd8ff');
+    rect(ctx, wx*T + 15, T + 4, 2, 8, '#6d5a8a');
+    rect(ctx, wx*T + 5, T + 5, 3, 1, '#e8f7ff'); rect(ctx, wx*T + 6, T + 6, 2, 1, '#e8f7ff');
+  }
+  // clock
+  rect(ctx, 12*T + 4, T + 3, 8, 8, '#2e2a48'); rect(ctx, 12*T + 5, T + 4, 6, 6, '#fff');
+  rect(ctx, 12*T + 8, T + 5, 1, 3, '#222'); rect(ctx, 12*T + 8, T + 7, 2, 1, '#c0392b');
+  // whiteboard = live task board
+  const b = BOARD;
+  rect(ctx, b.x + 1, b.y + 1, b.w - 2, b.h - 3, '#7a7a8c');
+  rect(ctx, b.x + 2, b.y + 2, b.w - 4, b.h - 5, '#f6f6f6');
+  const colsX = [b.x + 4, b.x + 19, b.x + 34, b.x + 49];
+  const order = ['queued', 'running', 'needs_input', 'done'];
+  const notec = { queued:'#a59fc4', running:'#4f9dff', needs_input:'#ffcc4d', done:'#5fd38d' };
+  order.forEach((s, i) => {
+    rect(ctx, colsX[i], b.y + 3, 11, 1, '#999');
+    tasks.filter(t => t.status === s).slice(0, 6).forEach((t, k) => {
+      rect(ctx, colsX[i] + (k % 3)*4, b.y + 5 + Math.floor(k / 3)*4, 3, 3, notec[s]);
+    });
+  });
+  rect(ctx, b.x + 4, b.y + b.h - 3, b.w - 8, 2, '#5b5b6b');
+}
+
+function drawFurn(f, now) {
+  const x = f.x*T, y = f.y*T, w = f.w*T, h = f.h*T;
+  switch (f.type) {
+    case 'rug':  rect(ctx, x + 6, y + 6, w - 12, h - 12, '#5b4b8a'); rect(ctx, x + 9, y + 9, w - 18, h - 18, '#6a5a9c'); break;
+    case 'rug2': rect(ctx, x + 4, y + 4, w - 8, h - 8, '#3f7a6a'); rect(ctx, x + 7, y + 7, w - 14, h - 14, '#4b8b7a'); break;
+    case 'table':
+      rect(ctx, x, y + 4, w, h - 6, '#7b4a24'); rect(ctx, x + 1, y + 5, w - 2, h - 10, '#9a6234');
+      rect(ctx, x + 2, y + h - 2, 2, 2, '#4b2c13'); rect(ctx, x + w - 4, y + h - 2, 2, 2, '#4b2c13');
+      rect(ctx, x + 12, y + 12, 8, 6, '#fff'); rect(ctx, x + 40, y + 10, 6, 8, '#e8e2c8');
+      break;
+    case 'chair': case 'chairB':
+      rect(ctx, x + 3, y + 6, 10, 8, '#3d3860'); rect(ctx, x + 3, f.type === 'chair' ? y + 2 : y + 12, 10, 4, '#2a2640'); break;
+    case 'coffee': {
+      rect(ctx, x + 2, y + 2, 12, 13, '#3a3a46'); rect(ctx, x + 4, y + 4, 8, 4, '#20202a');
+      rect(ctx, x + 10, y + 5, 1, 1, Math.floor(now / 500) % 2 ? '#ff6b6b' : '#5fd38d');
+      rect(ctx, x + 6, y + 10, 4, 4, '#fff');
+      const st = Math.floor(now / 250) % 3;
+      rect(ctx, x + 7 + (st === 1 ? 1 : 0), y - 1 - st, 1, 2, 'rgba(255,255,255,.6)');
+      break; }
+    case 'cooler':
+      rect(ctx, x + 4, y + 1, 8, 6, '#8fd3ff'); rect(ctx, x + 5, y + 2, 2, 3, '#c9ecff');
+      rect(ctx, x + 3, y + 7, 10, 8, '#e6e6ee'); rect(ctx, x + 6, y + 9, 4, 2, '#4f9dff'); break;
+    case 'plant': {
+      rect(ctx, x + 4, y + 10, 8, 6, '#b5562f'); rect(ctx, x + 4, y + 10, 8, 1, '#d36b3d');
+      const sway = Math.floor(now / 700) % 2;
+      rect(ctx, x + 3 + sway, y + 3, 10, 7, '#2f8f4e'); rect(ctx, x + 5, y, 6, 5, '#3fb15f'); rect(ctx, x + 7 - sway, y + 5, 3, 2, '#5fd38d');
+      break; }
+    case 'shelf': {
+      rect(ctx, x, y, w, h, '#5a3a1e'); rect(ctx, x + 1, y + 7, w - 2, 1, '#3d2712');
+      const books = ['#c0392b','#2980b9','#f1c40f','#27ae60','#8e44ad','#e67e22','#16a085','#d35400'];
+      books.forEach((col, i) => { rect(ctx, x + 2 + i*3.5, y + 1, 3, 6, col); rect(ctx, x + 2 + i*3.5, y + 9, 3, 6, books[(i + 3) % 8]); });
+      break; }
+    case 'couch':
+      rect(ctx, x, y + 2, w, 12, '#c0504d'); rect(ctx, x, y + 2, w, 4, '#a63f3c');
+      rect(ctx, x - 2, y + 4, 4, 10, '#a63f3c'); rect(ctx, x + w - 2, y + 4, 4, 10, '#a63f3c');
+      rect(ctx, x + 16, y + 7, 1, 6, '#a63f3c'); rect(ctx, x + 32, y + 7, 1, 6, '#a63f3c'); break;
+  }
+}
+
+function drawDesk(e, now) {
+  const x = e.desk.x*T, y = e.desk.y*T, st = empStatus(e);
+  rect(ctx, x, y, 2*T, 10, '#8b5a2b'); rect(ctx, x, y, 2*T, 1, '#a8713c');
+  rect(ctx, x, y + 10, 2*T, 4, '#6e4520');
+  rect(ctx, x + 1, y + 14, 2, 2, '#4b2c13'); rect(ctx, x + 2*T - 3, y + 14, 2, 2, '#4b2c13');
+  // monitor (back) + status LED
+  rect(ctx, x + 2, y - 6, 9, 8, '#2d2d3a'); rect(ctx, x + 5, y + 2, 3, 2, '#2d2d3a');
+  const led = { idle:'#555', running:'#4f9dff', needs_input:'#ffcc4d', done:'#5fd38d' }[st];
+  const blink = st === 'running' ? Math.floor(now / 200) % 2 : 1;
+  rect(ctx, x + 9, y - 4, 1, 1, blink ? led : '#2d2d3a');
+  if (st === 'running') rect(ctx, x + 11, y - 6, 1, 8, 'rgba(79,157,255,.35)');
+  // keyboard + mug
+  rect(ctx, x + 12, y + 3, 9, 3, '#d9d9e3'); rect(ctx, x + 13, y + 4, 7, 1, '#b0b0c0');
+  rect(ctx, x + 25, y + 2, 4, 4, '#fff'); rect(ctx, x + 29, y + 3, 1, 2, '#fff'); rect(ctx, x + 26, y + 3, 2, 1, '#6b3d1e');
+  // nameplate on floor
+  ctx.font = '5px "Press Start 2P", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  const tw = ctx.measureText(e.name).width + 4;
+  rect(ctx, x + T - tw/2, y + 17, tw, 8, 'rgba(20,18,31,.75)');
+  ctx.fillStyle = e.id === selectedId ? '#ffcc4d' : '#f2ecff';
+  ctx.fillText(e.name, x + T, y + 18.5);
+}
+
+function drawBubble(e, now) {
+  const p = empPos(e), st = empStatus(e);
+  const cx = p.x + 8, top = p.y - 12;
+  const bob = Math.floor(now / 400) % 2;
+  const bubble = (w, bg) => { rect(ctx, cx - w/2 - 1, top - 1 + bob, w + 2, 10, '#14121f'); rect(ctx, cx - w/2, top + bob, w, 8, bg); rect(ctx, cx - 1, top + 8 + bob, 2, 2, '#14121f'); rect(ctx, cx - 1, top + 8 + bob, 1, 1, bg); };
+  if (st === 'running') {
+    bubble(14, '#fff');
+    const d = Math.floor(now / 250) % 3;
+    for (let i = 0; i < 3; i++) rect(ctx, cx - 5 + i*4, top + 3 + bob, 2, 2, i === d ? '#4f9dff' : '#b8b8c8');
+    const t = tasks.find(t => t.id === e.current);
+    rect(ctx, cx - 8, top - 4 + bob, 16, 2, '#14121f'); rect(ctx, cx - 8, top - 4 + bob, Math.round(16*t.progress), 2, '#5fd38d');
+  } else if (st === 'needs_input') {
+    bubble(8, '#ffcc4d'); rect(ctx, cx - 1, top + 1 + bob, 2, 4, '#2a1d00'); rect(ctx, cx - 1, top + 6 + bob, 2, 1, '#2a1d00');
+  } else if (st === 'done') {
+    bubble(10, '#5fd38d');
+    rect(ctx, cx - 3, top + 4 + bob, 1, 1, '#0c2a18'); rect(ctx, cx - 2, top + 5 + bob, 1, 1, '#0c2a18');
+    rect(ctx, cx - 1, top + 4 + bob, 1, 1, '#0c2a18'); rect(ctx, cx, top + 3 + bob, 1, 1, '#0c2a18'); rect(ctx, cx + 1, top + 2 + bob, 1, 1, '#0c2a18');
+  } else {
+    const phase = (now / 1200) % 1;
+    ctx.font = '5px "Press Start 2P", monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = `rgba(242,236,255,${1 - phase})`;
+    ctx.fillText('z', cx + 3 + phase*3, top + 6 - phase*6);
+  }
+}
+
+function drawPrompt(box, label, now) {
+  const cx = box.x + box.w/2, y = box.y - 10 - (Math.floor(now / 300) % 2);
+  rect(ctx, cx - 5, y, 10, 9, '#14121f'); rect(ctx, cx - 4, y + 1, 8, 7, '#ffcc4d');
+  ctx.font = '5px "Press Start 2P", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillStyle = '#14121f'; ctx.fillText('E', cx + .5, y + 2);
+  if (label) {
+    const tw = ctx.measureText(label).width + 6;
+    rect(ctx, cx - tw/2, y - 10, tw, 8, 'rgba(20,18,31,.85)');
+    ctx.fillStyle = '#f2ecff'; ctx.fillText(label, cx, y - 8.5);
+  }
+}
+
+function render(now) {
+  ctx.setTransform(S, 0, 0, S, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  drawFloor(now);
+  FURN.filter(f => f.solid === false).forEach(f => drawFurn(f, now));
+
+  const items = [];
+  FURN.filter(f => f.solid !== false).forEach(f => items.push({ y: (f.y + f.h)*T, d: () => drawFurn(f, now) }));
+  EMPLOYEES.forEach(e => {
+    const p = empPos(e), st = empStatus(e);
+    const typing = st === 'running' && Math.floor(now / 150) % 2;
+    items.push({ y: p.y + 16, d: () => {
+      if (e.id === selectedId) { rect(ctx, p.x - 1, p.y + 1, 18, 14, 'rgba(255,204,77,' + (0.25 + 0.15*Math.sin(now / 200)) + ')'); }
+      drawChar(ctx, p.x, p.y + (typing ? 0 : 0), e.look, 'down', 0, true);
+      if (typing) { rect(ctx, p.x + 3, p.y + 11, 1, 1, e.look.skin); rect(ctx, p.x + 12, p.y + 10, 1, 1, e.look.skin); }
+    }});
+    items.push({ y: (e.desk.y + 1)*T, d: () => drawDesk(e, now) });
+  });
+  const frame = player.moving ? Math.floor(player.anim * 8) % 4 : 0;
+  items.push({ y: player.y + 16, d: () => drawChar(ctx, Math.round(player.x), Math.round(player.y), PLAYER_LOOK, player.dir, frame, false) });
+  items.sort((a, b) => a.y - b.y).forEach(i => i.d());
+
+  EMPLOYEES.forEach(e => drawBubble(e, now));
+  if (nearTarget) drawPrompt(nearTarget.box, nearTarget.label, now);
+}
+const PLAYER_LOOK = { hair:'#ffcc4d', skin:'#f5d0a9', shirt:'#e84a5f', pants:'#2a2640' };
+
+// ───────────────────────── Movement & input ─────────────────────────
+const keys = new Set();
+const isTyping = el => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
+addEventListener('keydown', ev => {
+  if (isTyping(document.activeElement)) return;
+  const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(ev.key)) ev.preventDefault();
+  if (k === 'e' || k === ' ' || k === 'Enter') { if (!ev.repeat) interact(); return; }
+  keys.add(k);
+});
+addEventListener('keyup', ev => { keys.delete(ev.key.length === 1 ? ev.key.toLowerCase() : ev.key); });
+addEventListener('blur', () => keys.clear());
+
+document.querySelectorAll('.dpad button').forEach(b => {
+  const k = b.dataset.k;
+  b.addEventListener('pointerdown', ev => { ev.preventDefault(); if (k === 'e') interact(); else keys.add(k); });
+  ['pointerup','pointerleave','pointercancel'].forEach(t => b.addEventListener(t, () => keys.delete(k)));
+});
+
+const solidAt = (px, py) => {
+  const c = Math.floor(px / T), r = Math.floor(py / T);
+  return c < 0 || r < 0 || c >= COLS || r >= ROWS || blocked[r][c];
+};
+const feetFree = (x, y) => !solidAt(x + 4, y + 11) && !solidAt(x + 11, y + 11) && !solidAt(x + 4, y + 15) && !solidAt(x + 11, y + 15);
+
+function update(dt) {
+  let dx = 0, dy = 0;
+  if (keys.has('ArrowLeft') || keys.has('a')) dx -= 1;
+  if (keys.has('ArrowRight') || keys.has('d')) dx += 1;
+  if (keys.has('ArrowUp') || keys.has('w')) dy -= 1;
+  if (keys.has('ArrowDown') || keys.has('s')) dy += 1;
+  player.moving = !!(dx || dy);
+  if (player.moving) {
+    const len = Math.hypot(dx, dy), sp = 64 * dt;
+    const nx = player.x + dx / len * sp, ny = player.y + dy / len * sp;
+    if (feetFree(nx, player.y)) player.x = nx;
+    if (feetFree(player.x, ny)) player.y = ny;
+    player.dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
+    player.anim += dt;
+  }
+  // nearest interactable
+  const fx = player.x + 8, fy = player.y + 13;
+  const dist = b => Math.hypot(Math.max(b.x - fx, 0, fx - (b.x + b.w)), Math.max(b.y - fy, 0, fy - (b.y + b.h)));
+  const cands = [
+    ...EMPLOYEES.map(e => ({ kind:'emp', id:e.id, box:empBox(e), label:e.name })),
+    { kind:'board', box:BOARD, label:'Task board' },
+    { kind:'coffee', box:COFFEE, label:'Coffee' },
+  ].map(c => ({ ...c, d: dist(c.box) })).filter(c => c.d < 10).sort((a, b) => a.d - b.d);
+  nearTarget = cands[0] || null;
+  if (nearTarget && nearTarget.kind === 'emp') nearTarget.box = { ...nearTarget.box, h: 8, y: nearTarget.box.y - 8 };
+}
+
+function interact() {
+  if (!nearTarget) return;
+  if (nearTarget.kind === 'emp') selectEmployee(nearTarget.id);
+  else if (nearTarget.kind === 'board') showTab('board');
+  else toast('☕ +10 focus. The coffee is… fine.');
+}
+
+cv.addEventListener('click', ev => {
+  const r = cv.getBoundingClientRect();
+  const x = (ev.clientX - r.left) / r.width * COLS*T, y = (ev.clientY - r.top) / r.height * ROWS*T;
+  const e = EMPLOYEES.find(e => { const b = empBox(e); return x >= b.x && x < b.x + b.w && y >= b.y - 8 && y < b.y + b.h + 10; });
+  if (e) selectEmployee(e.id);
+  else if (x >= BOARD.x && x < BOARD.x + BOARD.w && y >= BOARD.y && y < BOARD.y + BOARD.h) showTab('board');
+});
+
+let last = performance.now();
+function loop(now) {
+  update(Math.min((now - last) / 1000, 0.05));
+  last = now;
+  render(now);
+  requestAnimationFrame(loop);
+}
+
+// ───────────────────────── Simulated agent runner ─────────────────────────
+// In the real app this is the server: a worker per employee calling the Claude Agent SDK
+// and streaming events over a WebSocket. Here we fake the stream with canned scripts.
+function tickAgents() {
+  const now = performance.now();
+  let changed = false;
+  for (const e of EMPLOYEES) {
+    if (e.flashUntil && now >= e.flashUntil) { e.flashUntil = 0; changed = true; }
+    let t = e.current && tasks.find(t => t.id === e.current);
+    if (!t) {
+      const next = tasks.find(t => t.assignee === e.id && t.status === 'queued');
+      if (!next) continue;
+      next.status = 'running'; next.nextAt = now + 900; e.current = next.id;
+      next.log.push({ k:'sys', m:`▶ Spawning Claude agent as ${e.name} (${e.role})` });
+      next.log.push({ k:'sys', m:`  skills: ${e.skills.join(', ')} · tools: ${[...new Set(e.skills.flatMap(s => SKILLS[s].tools.split(' · ')))].join(' · ')}` });
+      if (!e.skills.includes(next.skill)) next.log.push({ k:'perm', m:`  ⚠ ${e.name} lacks “${next.skill}” — running with general tools only` });
+      changed = true; continue;
+    }
+    if (t.status !== 'running' || now < t.nextAt) continue;
+    const script = SCRIPTS[t.skill];
+    if (t.step < script.length) {
+      const line = script[t.step++];
+      if (line.startsWith('@perm ')) {
+        t.status = 'needs_input'; t.awaiting = line.slice(6);
+        t.log.push({ k:'perm', m:`✋ Permission requested: ${t.awaiting}` });
+        toast(`✋ ${e.name} needs your approval`);
+      } else {
+        t.log.push({ k: line.startsWith('→') ? 'tool' : 'text', m: line });
+      }
+      t.progress = t.step / (script.length + 1);
+      t.nextAt = now + 700 + Math.random() * 1100;
+    } else {
+      t.status = 'done'; t.progress = 1; t.log.push({ k:'done', m: RESULTS[t.skill] });
+      e.current = null; e.flashUntil = now + 6000;
+      toast(`✓ ${e.name} finished “${t.title}”`);
+    }
+    changed = true;
+  }
+  if (changed) refreshDynamic();
+}
+function resolvePermission(taskId, ok) {
+  const t = tasks.find(t => t.id === taskId);
+  if (!t || t.status !== 'needs_input') return;
+  t.log.push(ok ? { k:'done', m:`✔ Approved: ${t.awaiting}` } : { k:'deny', m:`✘ Denied: ${t.awaiting} — agent will skip and note it` });
+  if (!ok) t.step++; // skip the tool result line
+  t.status = 'running'; t.awaiting = null; t.nextAt = performance.now() + 500;
+  refreshDynamic();
+}
+
+// ───────────────────────── UI ─────────────────────────
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const STATUS_LABEL = { queued:'QUEUED', running:'WORKING', needs_input:'NEEDS YOU', done:'DONE' };
+const EMP_LABEL = { idle:['Idle','#a59fc4'], running:['Working','#4f9dff'], needs_input:['Needs you','#ffcc4d'], done:['Just finished','#5fd38d'] };
+
+function toast(msg) {
+  const el = document.createElement('div'); el.className = 'toast'; el.textContent = msg;
+  $('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+  while ($('toasts').children.length > 3) $('toasts').firstChild.remove();
+}
+
+function showTab(name) {
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === name));
+  $('tab-emp').hidden = name !== 'emp'; $('tab-board').hidden = name !== 'board';
+  if (name === 'board') renderBoard();
+}
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+function selectEmployee(id) {
+  selectedId = id;
+  const e = byId(id);
+  showTab('emp');
+  $('emp-empty').hidden = true; $('emp-view').hidden = false;
+  $('emp-name').textContent = e.name; $('emp-role').textContent = e.role;
+  const pc = $('portrait').getContext('2d');
+  pc.setTransform(3, 0, 0, 3, 0, 0); pc.clearRect(0, 0, 16, 16); pc.imageSmoothingEnabled = false;
+  drawChar(pc, 0, 0, e.look, 'down', 0, false);
+  renderSkills(); renderSkillSelect();
+  $('t-title').value = ''; $('t-desc').value = '';
+  refreshDynamic();
+}
+
+function renderSkills() {
+  const e = byId(selectedId);
+  $('emp-skills').innerHTML = Object.keys(SKILLS).map(s => {
+    const on = e.skills.includes(s);
+    return `<button type="button" class="chip${on ? ' on' : ''}" data-skill="${s}" aria-pressed="${on}" style="${on ? `background:${SKILLS[s].color}` : ''}">${s}</button>`;
+  }).join('');
+  $('skill-tools').textContent = e.skills.length
+    ? 'Agent tools: ' + [...new Set(e.skills.flatMap(s => SKILLS[s].tools.split(' · ')))].join(' · ')
+    : 'No skills — this agent will only get read-only tools.';
+}
+$('emp-skills').addEventListener('click', ev => {
+  const s = ev.target.closest('.chip')?.dataset.skill; if (!s) return;
+  const e = byId(selectedId);
+  e.skills = e.skills.includes(s) ? e.skills.filter(x => x !== s) : [...e.skills, s];
+  toast(e.skills.includes(s) ? `${e.name} learned ${s}` : `${e.name} forgot ${s}`);
+  renderSkills(); renderSkillSelect();
+});
+
+function renderSkillSelect() {
+  const e = byId(selectedId), cur = $('t-skill').value;
+  const all = Object.keys(SKILLS).sort((a, b) => e.skills.includes(b) - e.skills.includes(a));
+  $('t-skill').innerHTML = all.map(s => `<option value="${s}">${e.skills.includes(s) ? '★ ' : ''}${s}</option>`).join('');
+  if (cur && all.includes(cur)) $('t-skill').value = cur;
+  checkWarn();
+}
+function suggestFor(skill) {
+  return EMPLOYEES.filter(e => e.skills.includes(skill))
+    .sort((a, b) => tasks.filter(t => t.assignee === a.id && t.status !== 'done').length - tasks.filter(t => t.assignee === b.id && t.status !== 'done').length);
+}
+function checkWarn() {
+  const e = byId(selectedId), s = $('t-skill').value;
+  if (!e || e.skills.includes(s)) { $('t-warn').textContent = ''; $('t-submit').textContent = 'Assign ▶'; return; }
+  const alt = suggestFor(s)[0];
+  $('t-warn').textContent = `⚠ ${e.name} doesn't have ${s}.` + (alt ? ` ${alt.name} does.` : '');
+  $('t-submit').textContent = 'Assign anyway';
+}
+$('t-skill').addEventListener('change', checkWarn);
+
+$('task-form').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const e = byId(selectedId), title = $('t-title').value.trim(); if (!title) return;
+  addTask(e.id, title, $('t-desc').value.trim(), $('t-skill').value);
+  toast(`📋 Assigned to ${e.name}`);
+  $('t-title').value = ''; $('t-desc').value = '';
+  document.activeElement.blur();
+  refreshDynamic();
+});
+
+function taskItem(t, showWho) {
+  const who = showWho ? `<span>@${esc(byId(t.assignee).name)}</span>` : '';
+  return `<li class="task"><div class="t1"><b title="${esc(t.title)}">${esc(t.title)}</b><span class="status s-${t.status}">${STATUS_LABEL[t.status]}</span></div>
+    <div class="meta">${who}<span style="color:${SKILLS[t.skill].color}">${t.skill}</span></div>
+    ${t.status === 'running' || t.status === 'needs_input' ? `<div class="bar"><i style="width:${Math.round(t.progress*100)}%"></i></div>` : ''}</li>`;
+}
+
+function refreshDynamic() {
+  // header stats
+  const counts = { idle:0, running:0, needs_input:0, done:0 };
+  EMPLOYEES.forEach(e => counts[empStatus(e)]++);
+  const doneTasks = tasks.filter(t => t.status === 'done').length;
+  $('stats').innerHTML = [
+    ['#a59fc4', `${counts.idle + counts.done} idle`], ['#4f9dff', `${counts.running} working`],
+    ['#ffcc4d', `${counts.needs_input} need you`], ['#5fd38d', `${doneTasks} tasks done`],
+  ].map(([c, l]) => `<span class="stat"><i class="dot" style="background:${c}"></i>${l}</span>`).join('');
+
+  if (!$('tab-board').hidden) renderBoard();
+  if (!selectedId) return;
+  const e = byId(selectedId), st = empStatus(e), [lab, col] = EMP_LABEL[st];
+  $('emp-status').style.color = col; $('emp-status').textContent = '● ' + lab;
+
+  const mine = tasks.filter(t => t.assignee === e.id).sort((a, b) => (a.status === 'done') - (b.status === 'done') || b.id - a.id);
+  $('emp-queue').innerHTML = mine.length ? mine.map(t => taskItem(t, false)).join('') : '<li class="hint">No tasks yet.</li>';
+
+  const t = (e.current && tasks.find(t => t.id === e.current)) || mine.find(t => t.status === 'done');
+  const con = $('emp-console');
+  const stick = con.scrollTop + con.clientHeight >= con.scrollHeight - 4;
+  con.innerHTML = t
+    ? `<div class="sys">— ${esc(t.title)} —</div>` + t.log.map(l => `<div class="${l.k}">${esc(l.m)}</div>`).join('') + (t.status === 'running' ? '<span class="cursor"></span>' : '')
+    : '<div class="sys">Idle. Assign a task to spin up an agent.</div>';
+  if (stick) con.scrollTop = con.scrollHeight;
+
+  $('emp-approve').innerHTML = t && t.status === 'needs_input'
+    ? `<div class="approve"><span>Allow <b>${esc(t.awaiting)}</b>?</span>
+       <button class="btn green" data-ok="1" data-t="${t.id}">Approve</button>
+       <button class="btn red" data-ok="0" data-t="${t.id}">Deny</button></div>` : '';
+}
+$('emp-approve').addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (b) resolvePermission(+b.dataset.t, b.dataset.ok === '1');
+});
+
+function renderBoard() {
+  const order = ['needs_input', 'running', 'queued', 'done'];
+  $('board-cols').innerHTML = order.map(s => {
+    const list = tasks.filter(t => t.status === s).sort((a, b) => b.id - a.id);
+    return `<div class="colhead"><h3 style="margin:8px 0">${STATUS_LABEL[s]}</h3><span class="status s-${s}">${list.length}</span></div>
+      <ul class="tasks">${list.map(t => taskItem(t, true)).join('') || '<li class="hint">—</li>'}</ul>`;
+  }).join('');
+}
+$('b-skill').innerHTML = Object.keys(SKILLS).map(s => `<option>${s}</option>`).join('');
+function renderWho() {
+  $('b-who').innerHTML = `<option value="auto">Auto-match by skill</option>` + EMPLOYEES.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+}
+renderWho();
+$('board-form').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const title = $('b-title').value.trim(), skill = $('b-skill').value; if (!title) return;
+  let who = $('b-who').value;
+  if (who === 'auto') who = (suggestFor(skill)[0] || EMPLOYEES[0]).id;
+  addTask(who, title, '', skill);
+  toast(`📋 “${title}” → ${byId(who).name}`);
+  $('b-title').value = ''; document.activeElement.blur();
+  refreshDynamic();
+});
+
+// ───────────────────────── Boot ─────────────────────────
+refreshDynamic();
+setInterval(tickAgents, 200);
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => requestAnimationFrame(loop));
+})();
+</script>
+</body>
+</html>
