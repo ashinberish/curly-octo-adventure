@@ -12,7 +12,31 @@ whiteboard fills with sticky notes as work moves through the board.
 
 ---
 
-## 1. Core loop
+## 1. Look and layout
+
+The art direction follows a cozy top‑down pixel office: sage‑green tiled floor with diamond grout,
+thick cream walls with dark outlines, light‑wood desks with monitors, white speech bubbles and dark
+name tags under each person, and a strip of employee cards (portrait, name, status, current task)
+under the map.
+
+The office is split into rooms joined by doorways, with a camera that follows you:
+
+| Room | What's there |
+|---|---|
+| Engineering | Six desks, water cooler, the "!" notice board (opens the task board) |
+| Design studio | Two desks, bookshelf, reading corner |
+| Meeting room | Big table and whiteboard; later the place for multi‑agent "meetings" |
+| Focus room | The head of product's desk, bookshelf, armchair |
+| Kitchen & lounge | Coffee machine, fridge, dining table, couch |
+
+Idle employees don't just sit there: every so often they walk (pathfinding over the tile grid) to
+the coffee machine, couch, cooler or meeting room, say something in a bubble, then go back to their
+desk. When you give someone a task while they're on a break, they say "on it!" and walk back; the
+agent run starts once they sit down. While working, their monitor turns blue with scrolling code and
+a "working…" bubble with a progress bar floats above them; a yellow screen and "need your OK!" mean
+the agent is waiting for your approval.
+
+## 2. Core loop
 
 1. **Walk** the office (WASD / arrows, or the d‑pad on touch screens).
 2. **Talk** to an employee (`E` or click) to open their panel.
@@ -25,18 +49,18 @@ whiteboard fills with sticky notes as work moves through the board.
    outside its workspace) the employee raises a "!" and you approve or deny from the panel.
 7. **Collect**: the finished task lands in *Done* with its output (a PR, a report, a file).
 
-## 2. Feature scope
+## 3. Feature scope
 
 | Area | MVP | Later |
 |---|---|---|
-| World | One office map, collisions, y‑sorted sprites, desks, whiteboard, coffee | Several rooms/floors, doors, day/night, idle NPCs wandering, sound |
+| World | Office with five rooms and doorways, follow camera, collisions, y‑sorted sprites, idle employees wandering with chatter bubbles | More floors, day/night, sound, decorating your office |
 | Employees | Hire/fire, name, role, look, desk assignment | Sprite editor, levels/XP from finished tasks, moods tied to failures and load |
 | Skills | Catalog of skills; toggle per employee; skill → tools/instructions/MCP | User‑made skills (upload a `SKILL.md`), skill marketplace, per‑skill cost caps |
 | Tasks | Assign to a person or auto‑match by skill; queue per employee; status; cancel; retry | Dependencies between tasks, hand‑offs ("Ada → Linus for QA"), recurring tasks, meetings (multi‑agent at the table) |
 | Agents | One Claude Agent SDK run per task, streamed live; permission prompts; final output | Sub‑agents, long‑running sessions per employee with memory, scheduled work |
 | Board | Whiteboard tab: Needs you / Working / Queued / Done | Filters, history, cost per task, export |
 
-## 3. Architecture
+## 4. Architecture
 
 ```
 ┌──────────────────────── Browser ────────────────────────┐
@@ -85,7 +109,7 @@ mockup/         Static clickable mockup (this PR)
 docs/           This plan
 ```
 
-## 4. Data model
+## 5. Data model
 
 ```
 Employee  id, name, role, look{hair,skin,shirt,pants}, deskId, model, personaPrompt, createdAt
@@ -100,7 +124,7 @@ RunEvent  id, runId, seq, type(text|tool_use|tool_result|permission_request|perm
 Desk      id, x, y  (from the Tiled map)
 ```
 
-## 5. How an employee becomes an agent
+## 6. How an employee becomes an agent
 
 When a worker picks up a task it builds the agent from the employee and their skills:
 
@@ -151,7 +175,7 @@ design; the exact field names may differ by SDK version.
 | Error / max turns | Red ✗ bubble, task → *failed*, Retry button |
 | Idle (no tasks) | Floating "z", later: wanders to the coffee machine |
 
-## 6. API and live events
+## 7. API and live events
 
 ```
 GET    /employees               POST /employees           PATCH /employees/:id
@@ -164,7 +188,7 @@ WS     /live   → {type:"task.updated"|"run.event"|"employee.status", ...}
 
 Auto‑assign picks employees who have the skill, then the one with the shortest queue.
 
-## 7. Safety, cost and limits
+## 8. Safety, cost and limits
 
 - **Sandboxing:** every run gets its own workspace and no access to the host. Network access is
   limited to what the employee's skills declare.
@@ -177,19 +201,19 @@ Auto‑assign picks employees who have the skill, then the one with the shortest
 - **Concurrency:** a worker pool limit (for example 3 agents at once); other tasks wait in *Queued*.
 - **Audit:** every tool call and permission decision is stored as a `RunEvent`.
 
-## 8. Milestones
+## 9. Milestones
 
 | # | Milestone | Done when |
 |---|---|---|
 | M0 | **Mockup** (this PR) | Clickable single‑file prototype of the world, panels and flows, agents simulated |
-| M1 | Game world | Phaser + Tiled map, character sheets, movement and collisions, interaction prompts, mobile d‑pad |
+| M1 | Game world | Phaser + Tiled map with the rooms above, character sheets, movement, collisions, NPC pathfinding, interaction prompts, mobile d‑pad |
 | M2 | Office state | Postgres schema, employees/skills/tasks CRUD, React HUD wired to the API, task board |
 | M3 | Real agents | BullMQ worker running the Agent SDK per task, skills written into workspaces, events stored and streamed |
 | M4 | Human in the loop | Permission requests, approve/deny, cancel/retry, failure states, notifications |
 | M5 | Polish | Sounds, idle behaviours, XP/levels, cost meter, onboarding tutorial (walk to the boss's desk) |
 | M6 | Team play | Multi‑user office (presence over WS), hand‑offs between employees, meetings for multi‑agent tasks |
 
-## 9. Open questions
+## 10. Open questions
 
 1. **Where do outputs live?** A GitHub repo per office (PRs as output), plain files you download,
    or both?
