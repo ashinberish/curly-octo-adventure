@@ -1,0 +1,22 @@
+{
+  "name": "@pixel-office/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p . && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc -p .",
+    "assets": "node scripts/build-assets.ts",
+    "smoke": "node e2e/smoke.mjs"
+  },
+  "dependencies": {
+    "@pixel-office/shared": "*",
+    "phaser": "3.90.0",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
+    "zustand": "5.0.16"
+  }
+}

@@ -205,8 +205,8 @@ Auto‑assign picks employees who have the skill, then the one with the shortest
 
 | # | Milestone | Done when |
 |---|---|---|
-| M0 | **Mockup** (this PR) | Clickable single‑file prototype of the world, panels and flows, agents simulated |
-| M1 | Game world | Phaser + Tiled map with the rooms above, character sheets, movement, collisions, NPC pathfinding, interaction prompts, mobile d‑pad |
+| M0 | **Mockup** ✅ | Clickable single‑file prototype of the world, panels and flows, agents simulated (`mockup/`) |
+| M1 | **Game world** ✅ | Phaser + Tiled map with the rooms above, character sheets, movement, collisions, NPC pathfinding, interaction prompts, mobile d‑pad (`apps/web`; agents still simulated) |
 | M2 | Office state | Postgres schema, employees/skills/tasks CRUD, React HUD wired to the API, task board |
 | M3 | Real agents | BullMQ worker running the Agent SDK per task, skills written into workspaces, events stored and streamed |
 | M4 | Human in the loop | Permission requests, approve/deny, cancel/retry, failure states, notifications |
